@@ -6,5 +6,15 @@
 	"enable_hover": true,
 	"enable_snippets": true,
 	"enable_format": true,
-	"enable_auto_import": true
+	"enable_auto_import": true,
+	"profile": "Linux-Debug",
+	"profiles": [
+		{
+			"name": "Linux-Debug",
+			"os": "linux",
+			"arch": "amd64",
+			"defines": { "ODIN_DEBUG": "1" },
+			"checker_path": ["src"]
+		}
+	]
 }

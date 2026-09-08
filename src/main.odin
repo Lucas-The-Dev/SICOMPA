@@ -6,9 +6,15 @@ import "core:fmt"
 import "core:mem"
 import rl "vendor:raylib"
 
-import "gui"
+sprites := [EntitySprite]rl.Texture2D {
+	.Usuario   = rl.Texture2D{},
+	.Comutador = rl.Texture2D{},
+}
 
-fonts: [dynamic]rl.Font
+EntitySprite :: enum {
+	Usuario,
+	Comutador,
+}
 
 main :: proc() {
 	// Alocador Rastreador para ver vazamentos de memória.
@@ -31,39 +37,44 @@ main :: proc() {
 	// Usar Dynamic_Handle_Map para a versão final.
 	when !ODIN_DEBUG {
 		hm.dynamic_init(&entidades, context.allocator)
-		defer hm.dynamic_destroy(&entidades)
+		defer {
+			hm.dynamic_destroy(&entidades)
+		}
 	}
 
-	usuarios = make(map[UsuarioID]Usuario)
-	comutadores = make(map[ComutadorID]Comutador)
-	defer {
-		delete(comutadores)
-		delete(usuarios)
-	}
-
+	rl.SetConfigFlags({.WINDOW_RESIZABLE, .WINDOW_HIGHDPI})
 	rl.InitWindow(1280, 720, "SICOMPA - Simulador de Comutação de Pacotes")
 	defer rl.CloseWindow()
 
-	fonts = make([dynamic]rl.Font)
+	// sprites := [EntitySprite]rl.Texture2D {
+	// 	.Usuario   = rl.LoadTexture("sprites/icon_map.png"),
+	// 	.Comutador = rl.LoadTexture("sprites/icon_tower.png"),
+	// }
+
+	sprites[.Usuario] = rl.LoadTexture("sprites/icon_map.png")
+	sprites[.Comutador] = rl.LoadTexture("sprites/icon_tower.png")
 	defer {
-		for font in fonts {
-			rl.UnloadFont(font)
+		for sprite in sprites {
+			rl.UnloadTexture(sprite)
 		}
-		delete(fonts)
 	}
 
-	append(&fonts, rl.LoadFont("fonts/roboto.ttf"))
-	rl.GuiSetFont(fonts[0])
+	rl.EnableEventWaiting()
 
 	rl.SetTargetFPS(180)
 	for !rl.WindowShouldClose() {
+		entidades_atualizar()
+
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.DARKGRAY)
 
+		entidades_renderizar()
 
-		gui.render()
+		gui_renderizar()
 
-		rl.DrawFPS(2, rl.GetRenderHeight() - 18)
+		when ODIN_DEBUG {
+			rl.DrawFPS(2, rl.GetRenderHeight() - 18)
+		}
 		rl.EndDrawing()
 
 		free_all(context.temp_allocator)
