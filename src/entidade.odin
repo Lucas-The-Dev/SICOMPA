@@ -14,13 +14,20 @@ EntidadeID :: hm.Handle32
 
 Entidade :: struct {
 	handle:        EntidadeID,
+	conectados:    EntidadeID,
 	dados:         Dados,
 	sprite:        rl.Texture,
 	posicao:       rl.Vector2,
+	
 	// Raio de Colisão com Mouse
 	offset_mouse:  rl.Vector2,
 	colisor_mouse: rl.Rectangle,
 	segurado:      bool,
+}
+
+EntidadesSelecionadas :: struct {
+	quantidade:   int,
+	selecionadas: [2]^Entidade
 }
 
 Dados :: union {
@@ -30,15 +37,20 @@ Dados :: union {
 
 TAMANHO_COLISOR :: 32
 
-entidade_new :: proc(dados: Dados, position: rl.Vector2, sprite: rl.Texture2D) -> EntidadeID {
+entidades_selecionadas := EntidadesSelecionadas {
+	quantidade   = 0,
+	selecionadas = [2]^Entidade{}
+}
+
+entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) -> EntidadeID {
 	assert(dados != nil)
 	entidade := Entidade {
 		sprite        = sprite,
-		posicao       = position,
+		posicao       = posicao,
 		dados         = dados,
 		colisor_mouse = {
-			position.x - TAMANHO_COLISOR / 2,
-			position.y - TAMANHO_COLISOR / 2,
+			posicao.x - TAMANHO_COLISOR / 2,
+			posicao.y - TAMANHO_COLISOR / 2,
 			TAMANHO_COLISOR,
 			TAMANHO_COLISOR,
 		},
@@ -85,6 +97,17 @@ entidade_arrastar :: proc(entidade: ^Entidade, holding_another: ^bool) {
 	}
 }
 
+entidades_selecionar :: proc(entidade: ^Entidade) {
+	entidades_selecionadas.selecionadas[entidades_selecionadas.quantidade] = entidade
+	entidades_selecionadas.quantidade += 1
+
+	if entidades_selecionadas.quantidade == 2 {
+		fmt.printfln("Associando %d a %d", entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
+
+		entidades_selecionadas.quantidade = 0
+	}
+}
+
 entidades_atualizar :: proc() {
 	it := hm.iterator_make(&entidades)
 	holding_another := false
@@ -93,7 +116,18 @@ entidades_atualizar :: proc() {
 		if !holding_another {
 			entidade_arrastar(entidade, &holding_another)
 		}
+		
 		entidade_update(entidade)
+	}
+
+	if rl.IsMouseButtonPressed(.RIGHT) {
+		it := hm.iterator_make(&entidades)
+	
+		for entidade, _ in hm.iterate(&it) {
+			if rl.CheckCollisionPointRec(rl.GetMousePosition(), entidade.colisor_mouse) {
+				entidades_selecionar(entidade)
+			}
+		}
 	}
 }
 
@@ -105,4 +139,8 @@ entidades_renderizar :: proc() {
 		// }
 		rl.DrawTextureEx(entidade.sprite, entidade.posicao, 0.0, 2.0, rl.WHITE)
 	}
+}
+
+entidades_conectar :: proc(entidade1, entidade2: ^Entidade) {
+	
 }
