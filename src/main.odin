@@ -37,7 +37,9 @@ main :: proc() {
 	// Usar Dynamic_Handle_Map para a versão final.
 	when !ODIN_DEBUG {
 		hm.dynamic_init(&entidades, context.allocator)
+		hm.dynamic_init(&conexoes, context.allocator)
 		defer {
+			hm.dynamic_destroy(&conexoes)
 			hm.dynamic_destroy(&entidades)
 		}
 	}

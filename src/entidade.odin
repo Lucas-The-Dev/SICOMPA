@@ -1,7 +1,6 @@
 package main
 
 import hm "core:container/handle_map"
-import "core:fmt"
 import rl "vendor:raylib"
 
 when ODIN_DEBUG {
@@ -41,8 +40,7 @@ entidades_selecionadas := EntidadesSelecionadas {
 	selecionadas = [2]EntidadeID{}
 }
 
-entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) -> (EntidadeID, bool) {
-	assert(dados != nil)
+entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) -> (id: EntidadeID, ok: bool) {
 	entidade := Entidade {
 		sprite        = sprite,
 		posicao       = posicao,
@@ -56,12 +54,15 @@ entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) ->
 	}
 
 	handle, err := hm.add(&entidades, entidade)
-	if !err {
-		entidade, _ := hm.get(&entidades, handle)
-		entidade.handle = handle
+	if err != false {
+		return EntidadeID{}, false
 	}
-	
-	return handle, err
+
+	if e, found := hm.get(&entidades, handle); found {
+		e.handle = handle
+	}
+
+	return handle, true
 }
 
 entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
@@ -75,6 +76,8 @@ entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
 	case Usuario:
 		usuario_free(&tipo)
 	}
+
+	remover_conexoes(id)
 
 	hm.remove(&entidades, id)
 	return true
@@ -101,14 +104,15 @@ entidade_arrastar :: proc(entidade: ^Entidade, holding_another: ^bool) {
 	}
 }
 
-entidades_selecionar :: proc(entidade: ^Entidade) {
-	entidades_selecionadas.selecionadas[entidades_selecionadas.quantidade] = entidade.handle
+entidades_selecionar :: proc(id: EntidadeID) {
+	entidades_selecionadas.selecionadas[entidades_selecionadas.quantidade] = id
 	entidades_selecionadas.quantidade += 1
 
 	if entidades_selecionadas.quantidade == 2 {
-		fmt.println("Conectando %s a %s",entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
-		criar_conexao(entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
-
+		criar_conexao(
+			entidades_selecionadas.selecionadas[0],
+			entidades_selecionadas.selecionadas[1],
+		)
 		entidades_selecionadas.quantidade = 0
 	}
 }
@@ -117,7 +121,7 @@ entidades_atualizar :: proc() {
 	it := hm.iterator_make(&entidades)
 	holding_another := false
 
-	for entidade, handle in hm.iterate(&it) {
+	for entidade, _ in hm.iterate(&it) {
 		if !holding_another {
 			entidade_arrastar(entidade, &holding_another)
 		}
@@ -127,11 +131,10 @@ entidades_atualizar :: proc() {
 
 	if rl.IsMouseButtonPressed(.RIGHT) {
 		it := hm.iterator_make(&entidades)
-		fmt.println("clicado")
 
-		for entidade, _ in hm.iterate(&it) {
+		for entidade, handle in hm.iterate(&it) {
 			if rl.CheckCollisionPointRec(rl.GetMousePosition(), entidade.colisor_mouse) {
-				entidades_selecionar(entidade)
+				entidades_selecionar(handle)
 				break
 			}
 		}
@@ -140,7 +143,7 @@ entidades_atualizar :: proc() {
 
 entidades_renderizar :: proc() {
 	it := hm.iterator_make(&entidades)
-	for entidade, handle in hm.iterate(&it) {
+	for entidade, _ in hm.iterate(&it) {
 		// when ODIN_DEBUG {
 		// 	rl.DrawRectangleRec(entidade.colisor_mouse, rl.RED)
 		// }
