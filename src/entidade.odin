@@ -14,7 +14,6 @@ EntidadeID :: hm.Handle32
 
 Entidade :: struct {
 	handle:        EntidadeID,
-	conectados:    [dynamic]EntidadeID,
 	dados:         Dados,
 	sprite:        rl.Texture,
 	posicao:       rl.Vector2,
@@ -27,7 +26,7 @@ Entidade :: struct {
 
 EntidadesSelecionadas :: struct {
 	quantidade:   int,
-	selecionadas: [2]^Entidade
+	selecionadas: [2]EntidadeID
 }
 
 Dados :: union {
@@ -39,15 +38,14 @@ TAMANHO_COLISOR :: 32
 
 entidades_selecionadas := EntidadesSelecionadas {
 	quantidade   = 0,
-	selecionadas = [2]^Entidade{}
+	selecionadas = [2]EntidadeID{}
 }
 
-entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) -> EntidadeID {
+entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) -> (EntidadeID, bool) {
 	assert(dados != nil)
 	entidade := Entidade {
 		sprite        = sprite,
 		posicao       = posicao,
-		conectados    = make([dynamic]EntidadeID),
 		dados         = dados,
 		colisor_mouse = {
 			posicao.x - TAMANHO_COLISOR / 2,
@@ -58,7 +56,12 @@ entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) ->
 	}
 
 	handle, err := hm.add(&entidades, entidade)
-	return handle
+	if !err {
+		entidade, _ := hm.get(&entidades, handle)
+		entidade.handle = handle
+	}
+	
+	return handle, err
 }
 
 entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
@@ -99,12 +102,12 @@ entidade_arrastar :: proc(entidade: ^Entidade, holding_another: ^bool) {
 }
 
 entidades_selecionar :: proc(entidade: ^Entidade) {
-	entidades_selecionadas.selecionadas[entidades_selecionadas.quantidade] = entidade
+	entidades_selecionadas.selecionadas[entidades_selecionadas.quantidade] = entidade.handle
 	entidades_selecionadas.quantidade += 1
 
 	if entidades_selecionadas.quantidade == 2 {
 		fmt.println("Conectando %s a %s",entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
-		entidades_conectar(entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
+		criar_conexao(entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
 
 		entidades_selecionadas.quantidade = 0
 	}
@@ -129,6 +132,7 @@ entidades_atualizar :: proc() {
 		for entidade, _ in hm.iterate(&it) {
 			if rl.CheckCollisionPointRec(rl.GetMousePosition(), entidade.colisor_mouse) {
 				entidades_selecionar(entidade)
+				break
 			}
 		}
 	}
@@ -142,9 +146,4 @@ entidades_renderizar :: proc() {
 		// }
 		rl.DrawTextureEx(entidade.sprite, entidade.posicao, 0.0, 2.0, rl.WHITE)
 	}
-}
-
-entidades_conectar :: proc(entidade1, entidade2: ^Entidade) {
-	append(&entidade1.conectados, entidade2.handle)
-	append(&entidade2.conectados, entidade1.handle)
 }
