@@ -14,11 +14,11 @@ EntidadeID :: hm.Handle32
 
 Entidade :: struct {
 	handle:        EntidadeID,
-	conectados:    EntidadeID,
+	conectados:    [dynamic]EntidadeID,
 	dados:         Dados,
 	sprite:        rl.Texture,
 	posicao:       rl.Vector2,
-	
+
 	// Raio de Colisão com Mouse
 	offset_mouse:  rl.Vector2,
 	colisor_mouse: rl.Rectangle,
@@ -47,6 +47,7 @@ entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) ->
 	entidade := Entidade {
 		sprite        = sprite,
 		posicao       = posicao,
+		conectados    = make([dynamic]EntidadeID),
 		dados         = dados,
 		colisor_mouse = {
 			posicao.x - TAMANHO_COLISOR / 2,
@@ -102,7 +103,8 @@ entidades_selecionar :: proc(entidade: ^Entidade) {
 	entidades_selecionadas.quantidade += 1
 
 	if entidades_selecionadas.quantidade == 2 {
-		fmt.printfln("Associando %d a %d", entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
+		fmt.println("Conectando %s a %s",entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
+		entidades_conectar(entidades_selecionadas.selecionadas[0], entidades_selecionadas.selecionadas[1])
 
 		entidades_selecionadas.quantidade = 0
 	}
@@ -116,13 +118,14 @@ entidades_atualizar :: proc() {
 		if !holding_another {
 			entidade_arrastar(entidade, &holding_another)
 		}
-		
+
 		entidade_update(entidade)
 	}
 
 	if rl.IsMouseButtonPressed(.RIGHT) {
 		it := hm.iterator_make(&entidades)
-	
+		fmt.println("clicado")
+
 		for entidade, _ in hm.iterate(&it) {
 			if rl.CheckCollisionPointRec(rl.GetMousePosition(), entidade.colisor_mouse) {
 				entidades_selecionar(entidade)
@@ -142,5 +145,6 @@ entidades_renderizar :: proc() {
 }
 
 entidades_conectar :: proc(entidade1, entidade2: ^Entidade) {
-	
+	append(&entidade1.conectados, entidade2.handle)
+	append(&entidade2.conectados, entidade1.handle)
 }
