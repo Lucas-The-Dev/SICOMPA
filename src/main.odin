@@ -70,6 +70,8 @@ main :: proc() {
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.DARKGRAY)
 
+		conexoes_renderizar()
+
 		entidades_renderizar()
 
 		gui_renderizar()

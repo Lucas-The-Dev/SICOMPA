@@ -34,6 +34,7 @@ Dados :: union {
 }
 
 TAMANHO_COLISOR :: 32
+ESCALA_ENTIDADE :: 2.0
 
 entidades_selecionadas := EntidadesSelecionadas {
 	quantidade   = 0,
@@ -88,8 +89,8 @@ entidade_update :: proc(entidade: ^Entidade) {
 		entidade.posicao = rl.GetMousePosition() + entidade.offset_mouse
 	}
 
-	entidade.colisor_mouse.x = entidade.posicao.x
-	entidade.colisor_mouse.y = entidade.posicao.y
+	entidade.colisor_mouse.x = entidade.posicao.x - TAMANHO_COLISOR / 2
+	entidade.colisor_mouse.y = entidade.posicao.y - TAMANHO_COLISOR / 2
 }
 
 entidade_arrastar :: proc(entidade: ^Entidade, holding_another: ^bool) {
@@ -130,23 +131,50 @@ entidades_atualizar :: proc() {
 	}
 
 	if rl.IsMouseButtonPressed(.RIGHT) {
-		it := hm.iterator_make(&entidades)
+		entidades_processar_click_direito()
+	}
+}
 
-		for entidade, handle in hm.iterate(&it) {
-			if rl.CheckCollisionPointRec(rl.GetMousePosition(), entidade.colisor_mouse) {
-				entidades_selecionar(handle)
-				break
-			}
+entidades_processar_click_direito :: proc() {
+	mouse := rl.GetMousePosition()
+
+	it := hm.iterator_make(&entidades)
+	for entidade, handle in hm.iterate(&it) {
+		if rl.CheckCollisionPointRec(mouse, entidade.colisor_mouse) {
+			entidades_selecionar(handle)
+			return
 		}
 	}
+
+	if conexao, ok := conexao_sob_mouse(); ok {
+		if entidades_selecionadas.quantidade > 0 {
+			mostrar_mensagem("Modo de seleção ativo: clique no vazio para cancelar antes de apagar.")
+		} else {
+			deletar_conexao(conexao)
+		}
+		return
+	}
+
+	entidades_selecionadas.quantidade = 0
 }
 
 entidades_renderizar :: proc() {
 	it := hm.iterator_make(&entidades)
-	for entidade, _ in hm.iterate(&it) {
-		// when ODIN_DEBUG {
-		// 	rl.DrawRectangleRec(entidade.colisor_mouse, rl.RED)
-		// }
-		rl.DrawTextureEx(entidade.sprite, entidade.posicao, 0.0, 2.0, rl.WHITE)
+	for entidade, handle in hm.iterate(&it) {
+		tamanho := rl.Vector2 {
+			f32(entidade.sprite.width) * ESCALA_ENTIDADE,
+			f32(entidade.sprite.height) * ESCALA_ENTIDADE,
+		}
+		rl.DrawTextureEx(entidade.sprite, entidade.posicao - tamanho / 2, 0.0, ESCALA_ENTIDADE, rl.WHITE)
+
+		if entidades_selecionadas.quantidade == 1 &&
+		   entidades_selecionadas.selecionadas[0] == handle {
+			rl.DrawCircleLines(
+				i32(entidade.posicao.x),
+				i32(entidade.posicao.y),
+				f32(TAMANHO_COLISOR),
+				rl.YELLOW,
+			)
+		}
 	}
 }

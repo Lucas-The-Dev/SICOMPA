@@ -99,3 +99,33 @@ conexoes_entidade :: proc(entidade: EntidadeID, alocador := context.temp_allocat
 	}
 	return vizinhos[:]
 }
+
+ESPESSURA_CONEXAO       :: 3.0
+ESPESSURA_CONEXAO_HOVER :: 5.0
+COR_CONEXAO             :: rl.LIGHTGRAY
+COR_CONEXAO_HOVER       :: rl.YELLOW
+
+conexao_sob_mouse :: proc() -> (ConexaoID, bool) {
+	mouse := rl.GetMousePosition()
+	it := hm.iterator_make(&conexoes)
+	for c, handle in hm.iterate(&it) {
+		p1, p2 := conexao_extremidades(c)
+		if rl.CheckCollisionPointLine(mouse, p1, p2, 8) {
+			return handle, true
+		}
+	}
+	return {}, false
+}
+
+conexoes_renderizar :: proc() {
+	hover, tem_hover := conexao_sob_mouse()
+	it := hm.iterator_make(&conexoes)
+	for c, handle in hm.iterate(&it) {
+		p1, p2 := conexao_extremidades(c)
+		if tem_hover && handle == hover {
+			rl.DrawLineEx(p1, p2, ESPESSURA_CONEXAO_HOVER, COR_CONEXAO_HOVER)
+		} else {
+			rl.DrawLineEx(p1, p2, ESPESSURA_CONEXAO, COR_CONEXAO)
+		}
+	}
+}
