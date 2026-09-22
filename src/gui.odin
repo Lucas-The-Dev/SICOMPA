@@ -62,12 +62,12 @@ gui_renderizar :: proc() {
 gui_topleft_buttons_render :: proc() {
 	center := rl.Vector2{f32(rl.GetRenderWidth()) / 2, f32(rl.GetRenderHeight()) / 2}
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 0), 150, 30}, "Criar Usuário") {
-		if _, ok := entidade_new(usuario_new(), center, sprites[.Usuario]); ok {
+		if _, ok := entidade_new(usuario_new(), center, sprites[.Usuario]); !ok {
 			mostrar_mensagem("Falha ao criar usuário.")
 		}
 	}
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 1), 150, 30}, "Criar Comutador") {
-		if _, ok := entidade_new(comutador_new(), center, sprites[.Comutador]); ok {
+		if _, ok := entidade_new(comutador_new(), center, sprites[.Comutador]); !ok {
 			mostrar_mensagem("Falha ao criar comutador.")
 		}
 	}

@@ -54,16 +54,14 @@ entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) ->
 		},
 	}
 
-	handle, err := hm.add(&entidades, entidade)
-	if err != false {
-		return EntidadeID{}, false
-	}
+	handle, _ := hm.add(&entidades, entidade)
 
 	if e, found := hm.get(&entidades, handle); found {
 		e.handle = handle
+		return handle, true
 	}
 
-	return handle, true
+	return EntidadeID{}, false
 }
 
 entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
