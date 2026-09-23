@@ -70,6 +70,17 @@ remover_conexoes :: proc(id: EntidadeID) {
 	}
 }
 
+conexoes_limpar :: proc() {
+	para_remover := make([dynamic]ConexaoID, 0, 8, context.temp_allocator)
+	it := hm.iterator_make(&conexoes)
+	for _, handle in hm.iterate(&it) {
+		append(&para_remover, handle)
+	}
+	for handle in para_remover {
+		hm.remove(&conexoes, handle)
+	}
+}
+
 conexao_extremidades :: proc(c: ^Conexao) -> (rl.Vector2, rl.Vector2) {
 	ea, ok_a := hm.get(&entidades, c.a)
 	eb, ok_b := hm.get(&entidades, c.b)

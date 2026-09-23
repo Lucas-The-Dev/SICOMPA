@@ -68,7 +68,7 @@ entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) ->
 entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
 	entidade := hm.get(&entidades, id) or_return
 
-	rl.UnloadTexture(entidade.sprite)
+	// A textura é compartilhada (sprites globais), não deve ser descarregada aqui.
 
 	switch &tipo in entidade.dados {
 	case Comutador:
@@ -81,6 +81,32 @@ entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
 
 	hm.remove(&entidades, id)
 	return true
+}
+
+entidades_limpar :: proc() {
+	simulacao_limpar()
+
+	para_remover := make([dynamic]EntidadeID, 0, 16, context.temp_allocator)
+	it := hm.iterator_make(&entidades)
+	for _, handle in hm.iterate(&it) {
+		append(&para_remover, handle)
+	}
+
+	for id in para_remover {
+		if entidade, ok := hm.get(&entidades, id); ok {
+			switch &dados in entidade.dados {
+			case Usuario:
+				usuario_free(&dados)
+			case Comutador:
+				comutador_free(&dados)
+			}
+		}
+		hm.remove(&entidades, id)
+	}
+
+	conexoes_limpar()
+
+	entidades_selecionadas.quantidade = 0
 }
 
 entidade_update :: proc(entidade: ^Entidade) {

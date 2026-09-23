@@ -44,3 +44,46 @@ A Fase 1 está **funcional**: criar usuários/comutadores, conectar, adicionar m
 - **Item 2/4 do roadmap — persistência `output.json`**: exportar **e** importar (tipo/posição das entidades + conexões) com `core:encoding/json`.
 - **Melhorias visuais**: escopo ainda a definir pelo usuário.
 - Revisar `MENSAGEM_DURACAO :: 0.5` (popup curto).
+
+---
+
+# SICOMPA — Resumo da sessão (importação/exportação + correções pendentes)
+
+## Objetivo
+Implementar a persistência do esquema (exportar/importar em JSON) e, antes disso, resolver as pendências deixadas na sessão anterior (`conexoes_limpar`; `entidades_limpar` e textura compartilhada).
+
+## Correções pendentes (feitas primeiro)
+- **`conexoes.odin`**: novo `conexoes_limpar()`, que remove todas as conexões (coleta handles e `hm.remove`).
+- **`entidade.odin`**:
+  - `entidade_free` **não** descarrega mais `rl.UnloadTexture` — a textura é global/compartilhada (`sprites[.Usuario]`/`sprites[.Comutador]`), e descarregá-la quebraria as demais entidades.
+  - novo `entidades_limpar()`: chama `simulacao_limpar()`, percorre as entidades liberando `dados` (`usuario_free`/`comutador_free`), remove do handle map, chama `conexoes_limpar()` e zera `entidades_selecionadas`.
+
+## Persistência (`persistencia.odin`, novo)
+- **Esquema JSON** (`VERSION_ESQUEMA :: 1`):
+  - `TipoEntidade :: enum { Usuario, Comutador }`.
+  - `EntidadeEsquema{tipo, x, y, nome}` (nome com `json:"nome,omitempty"`).
+  - `ConexaoEsquema{a, b}` referenciando entidades por **índice**.
+  - `Esquema{versao, entidades, conexoes}`.
+- **`montar_esquema`**: itera o handle map, monta `map[EntidadeID]int` (handle → índice) e serializa as conexões por índice.
+- **`exportar_esquema(nome)`**: `json.marshal` (pretty, 4 espaços) + `os.write_entire_file`; notifica no sucesso.
+- **`importar_esquema(nome)`**: `os.read_entire_file` + `json.unmarshal`; valida; `entidades_limpar()`; zera `proximo_usuario_id`/`proximo_mensagem_id`; recria entidades preservando tipo, posição e nome (nome clonado no alocador do usuário) e refaz as conexões por índice.
+- **Wrappers** `arquivo_ler`/`arquivo_escrever` isolam a API de `core:os`; `com_extensao_json` anexa `.json` se faltar.
+- Mensagens e pendências **não** entram no arquivo.
+
+## GUI (`gui.odin`)
+- Botões **"Exportar"** e **"Importar"** na coluna superior-esquerda (índices 3 e 4, abaixo de "Nova Mensagem").
+- `modal_arquivo_aberto` + `ArquivoModo{Exportar, Importar}` + buffer `arquivo_nome: [256]u8`.
+- `gui_modal_arquivo_render`: janela com `GuiTextBox` e botões "Salvar"/"Abrir" e "Cancelar"; título e rótulo mudam conforme o modo.
+- `algum_modal_aberto()` (`modal_mensagem_aberto || modal_arquivo_aberto`) impede que os botões globais ajam com um modal aberto.
+- `gui_renderizar` passa a chamar `gui_modal_arquivo_render()`.
+
+## Observação de compatibilidade
+- Foi usada a API atual de `core:os`: `read_entire_file(name, allocator)` e `write_entire_file(name, data)`, retornando `os.Error`. Em versões antigas (retornos `bool`), o ajuste fica restrito a `arquivo_ler`/`arquivo_escrever`.
+
+## Estado atual
+Importação/exportação funcionais: exporta entidades/conexões/nomes para `<nome>.json` na pasta de execução e remonta a tela a partir do arquivo (substituindo o esquema atual). Sem alterações em `main.odin`.
+
+## Próximos passos sugeridos
+- Validar `VERSION_ESQUEMA` na importação e detalhar mensagens de erro.
+- Melhorias visuais (escopo a definir).
+- Rever `MENSAGEM_DURACAO :: 2.5`.

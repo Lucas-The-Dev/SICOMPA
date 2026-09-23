@@ -60,6 +60,20 @@ mensagem_destino:  i32
 mensagem_origem_edit:  bool
 mensagem_destino_edit: bool
 
+modal_arquivo_aberto: bool
+
+ArquivoModo :: enum {
+	Exportar,
+	Importar,
+}
+
+arquivo_modo: ArquivoModo
+arquivo_nome: [256]u8
+
+algum_modal_aberto :: proc() -> bool {
+	return modal_mensagem_aberto || modal_arquivo_aberto
+}
+
 construir_lista_usuarios :: proc() -> (ids: []EntidadeID, texto: cstring, quantidade: int) {
 	lista := make([dynamic]EntidadeID, 0, 8, context.temp_allocator)
 	b := strings.builder_make_len_cap(0, 128, context.temp_allocator)
@@ -192,6 +206,75 @@ gui_modal_mensagem_render :: proc() {
 	}
 }
 
+abrir_modal_arquivo :: proc(modo: ArquivoModo) {
+	arquivo_modo = modo
+	arquivo_nome[0] = 0
+	modal_arquivo_aberto = true
+}
+
+gui_modal_arquivo_confirmar :: proc() {
+	nome := string(cstring(&arquivo_nome[0]))
+	if len(nome) == 0 {
+		mostrar_mensagem("Digite um nome de arquivo.")
+		return
+	}
+
+	arquivo := com_extensao_json(nome)
+
+	switch arquivo_modo {
+	case .Exportar:
+		if exportar_esquema(arquivo) {
+			modal_arquivo_aberto = false
+		}
+	case .Importar:
+		if importar_esquema(arquivo) {
+			modal_arquivo_aberto = false
+		}
+	}
+}
+
+gui_modal_arquivo_render :: proc() {
+	if !modal_arquivo_aberto {
+		return
+	}
+
+	titulo := "Exportar Esquema"
+	rotulo_acao := "Salvar"
+	if arquivo_modo == .Importar {
+		titulo = "Importar Esquema"
+		rotulo_acao = "Abrir"
+	}
+
+	bounds := rl.Rectangle {
+		x      = f32(rl.GetRenderWidth()) / 2 - 200,
+		y      = f32(rl.GetRenderHeight()) / 2 - 80,
+		width  = 400,
+		height = 160,
+	}
+	rl.GuiWindowBox(bounds, strings.clone_to_cstring(titulo))
+
+	rl.GuiLabel({bounds.x + 20, bounds.y + 50, 120, 24}, "Nome do Arquivo")
+	rl.GuiTextBox(
+		{bounds.x + 150, bounds.y + 50, 230, 24},
+		cstring(&arquivo_nome[0]),
+		len(arquivo_nome),
+		true,
+	)
+
+	if rl.GuiButton(
+		{bounds.x + bounds.width - 230, bounds.y + bounds.height - 40, 100, 30},
+		strings.clone_to_cstring(rotulo_acao),
+	) {
+		gui_modal_arquivo_confirmar()
+	}
+	if rl.GuiButton(
+		{bounds.x + bounds.width - 120, bounds.y + bounds.height - 40, 100, 30},
+		"Cancelar",
+	) {
+		modal_arquivo_aberto = false
+	}
+}
+
 gui_renderizar :: proc() {
 	gui_topleft_buttons_render()
 
@@ -201,26 +284,34 @@ gui_renderizar :: proc() {
 
 	gui_modal_mensagem_render()
 
+	gui_modal_arquivo_render()
+
 	notificacoes_renderizar()
 }
 
 gui_topleft_buttons_render :: proc() {
 	center := rl.Vector2{f32(rl.GetRenderWidth()) / 2, f32(rl.GetRenderHeight()) / 2}
-	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 0), 150, 30}, "Criar Usuário") {
+	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 0), 150, 30}, "Criar Usuário") && !algum_modal_aberto() {
 		if _, ok := entidade_new(usuario_new(), center, sprites[.Usuario]); !ok {
 			mostrar_mensagem("Falha ao criar usuário.")
 		}
 	}
-	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 1), 150, 30}, "Criar Comutador") {
+	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 1), 150, 30}, "Criar Comutador") && !algum_modal_aberto() {
 		if _, ok := entidade_new(comutador_new(), center, sprites[.Comutador]); !ok {
 			mostrar_mensagem("Falha ao criar comutador.")
 		}
 	}
-	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 2), 150, 30}, "Nova Mensagem") {
+	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 2), 150, 30}, "Nova Mensagem") && !algum_modal_aberto() {
 		modal_mensagem_aberto = true
 		mensagem_conteudo[0] = 0
 		mensagem_origem_edit = false
 		mensagem_destino_edit = false
+	}
+	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 3), 150, 30}, "Exportar") && !algum_modal_aberto() {
+		abrir_modal_arquivo(.Exportar)
+	}
+	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 4), 150, 30}, "Importar") && !algum_modal_aberto() {
+		abrir_modal_arquivo(.Importar)
 	}
 }
 
