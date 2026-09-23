@@ -2,7 +2,7 @@
 
 ## Visão geral do projeto
 
-**SICOMPA** é um simulador didático de rede de comutação de pacotes, em **Odin + Raylib**. Objetivo: visualizar o processo de comutação de forma didática, com pacotes viajando visualmente pelas conexões. Arquitetura: dois handle maps globais (entidades e conexões), renderização em camadas (conexões → entidades → GUI) e um sistema simples de mensagem/popup.
+**SICOMPA** é um simulador didático de rede de comutação de pacotes, em **Odin + Raylib**. Objetivo: visualizar o processo de comutação de forma didática, com pacotes viajando visualmente pelas conexões. Arquitetura: dois handle maps globais (entidades e conexões), renderização em camadas (conexões → entidades → pacotes → GUI) e um sistema simples de mensagem/popup (curto) + notificações no topo-direito.
 
 Método de comutação definido: **flooding** (sem otimização de rota). Cada comutador verifica se está conectado ao destino; se não, repassa o pacote aos demais comutadores. Para evitar loops, o `Pacote` precisa carregar a lista de comutadores por onde já passou.
 
@@ -28,17 +28,23 @@ Método de comutação definido: **flooding** (sem otimização de rota). Cada c
 **`notificacoes.odin`** — `Notificacao{texto: string, timer: f32}`; global `notificacoes: [dynamic]Notificacao`; `notificar`, `notificar_mensagem_recebida(nome, conteudo)`, `notificacoes_atualizar` (decai timer e remove), `notificacoes_renderizar` (cartões empilhados no topo-direito, fade) e `notificacoes_limpar`.
 
 ## Modificado na última sessão
-- **Fase 1 (simulação/flooding)** implementada: `pacote.odin` expandido (fragmentos + `pacote_clone`/`pacote_free`); `usuario.odin` com `Mensagem`, `usuario_enviar` (fragmenta em `RUNES_POR_PACOTE` e lança aos vizinhos) e `usuario_receber` (dedupe + remontagem em `recebidas`); `simulacao.odin` novo (`pacote_enviar`/`pacote_chegar`, `simulacao_iniciar`/`atualizar`/`limpar`, `pacotes_renderizar`).
+- **Fase 1 (simulação/flooding)** concluída: `pacote.odin` expandido (fragmentos + `pacote_clone`/`pacote_free`); `usuario.odin` com `Mensagem`, `usuario_enviar` (fragmenta em `RUNES_POR_PACOTE` e lança aos vizinhos) e `usuario_receber` (dedupe + remontagem em `recebidas`); `simulacao.odin` novo (`pacote_enviar`/`pacote_chegar`, `simulacao_iniciar`/`atualizar`/`limpar`, `pacotes_renderizar`).
 - **`gui.odin`**: botão "Nova Mensagem" com modal (dropdowns Origem/Destino + `GuiTextBox` + "Adicionar"/"Cancelar"); barra inferior como painel raygui com "Iniciar/Pausar" e "Limpar".
 - **`main.odin`**: `simulacao_atualizar()` e `pacotes_renderizar()` no loop; `defer { simulacao_limpar(); delete(pacotes) }`.
-- **Back-end de conexões criado** (`conexoes.odin`): storage em handle map, `criar_conexao` com as 3 recusas e `mostrar_mensagem`, deleção/limpeza, geometria e `conexoes_entidade`.
+- **Pós-teste, 4 correções:**
+  1. **Animação travada**: removido `rl.EnableEventWaiting()` em `main.odin`. O modo dirigido por eventos bloqueava `EndDrawing()` até chegar um evento, então a simulação só avançava com o mouse em movimento. Agora o loop roda por frame (limitado por `SetTargetFPS(180)`).
+  2. **Nome do usuário**: `Usuario.nome` + global `proximo_usuario_id` em `usuario.odin` (automático "Usuário N", liberado em `usuario_free`); `entidade_rotulo_renderizar` desenha o nome sob o sprite; dropdowns usam `dados.nome`.
+  3. **Dropdown sobreposto**: `gui_modal_mensagem_render` desenha labels/textbox/botões primeiro e os dropdowns por último (o aberto por último de tudo), com guarda para botões/textbox não agirem enquanto há dropdown aberto; modal mais alto.
+  4. **Feedback de recebimento**: novo `notificacoes.odin` (cartões empilhados no topo-direito, ~4s, fade). `usuario_receber` chama `notificar_mensagem_recebida(nome, conteudo)` ao completar a remontagem. `main.odin` chama `notificacoes_atualizar()` e `gui_renderizar()` chama `notificacoes_renderizar()`; limpeza no `defer`.
+- **Ajustes de compilação aplicados pelo usuário** (não repetir): `CORES_MENSAGEM` virou `@(rodata) [6]rl.Color` (constante não pode ser indexada por variável); `make([dynamic]rune, ...)` em `usuario_receber` (evitar ambiguidade de `make`); conversões para `cstring` nos rótulos/botões; `strings.to_cstring(&b)` sem passar allocator.
+- **Back-end de conexões** (`conexoes.odin`): storage em handle map, `criar_conexao` com as 3 recusas e `mostrar_mensagem`, deleção/limpeza, geometria e `conexoes_entidade`.
 - **`entidade.odin`**: `entidade_new` corrigido (retorno `(id, ok)`, handle setado após `hm.add`); `entidade_free` chama `remover_conexoes`; seleção passa a usar `EntidadeID`; clique direito extraído para `entidades_processar_click_direito`.
 - **Convenção de erro**: padronizada para `ok` (true = sucesso) nos procs do projeto; `hm.add` tratado via `err != false`.
-- **Centro como referência**: `entidade_update` e `entidades_renderizar` alinhados à convenção.
 
 ## Pendências observadas (fora do escopo desta sessão)
-- Itens ainda não iniciados: **4 (persistência `output.json`)** e melhorias visuais (a definir).
-- `MENSAGEM_DURACAO :: 0.5` (era 2.5).
+- Item **4 (persistência/exportação `output.json`)** ainda não iniciado (decidido: exportar **e** importar).
+- Melhorias visuais ainda a definir pelo usuário.
+- `MENSAGEM_DURACAO :: 0.5` (popup curto) — pode ser revisto.
 
 # Regras gerias
 1. Não tente ler arquivos fora do projeto, sob nenhuma hipótese, principalmente os arquivos da biblioteca padrão do Odin ou do Raylib (eles tem uma documentação na internet para isto).
