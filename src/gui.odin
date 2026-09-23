@@ -11,6 +11,15 @@ GuiWindow :: enum {
 
 GuiWindows :: bit_set[GuiWindow]
 
+// flexbox_axis calcula a posição de um item empilhado verticalmente.
+//
+// Parâmetros:
+// - `offset`: deslocamento inicial.
+// - `size`: altura de cada item.
+// - `spacing`: espaçamento entre itens.
+// - `num`: índice (0-based) do item.
+//
+// Retorna: a coordenada do item na pilha.
 flexbox_axis :: proc(offset, size, spacing: f32, num: int) -> f32 {
 	return offset + (size + spacing) * f32(num)
 }
@@ -20,6 +29,11 @@ mensagem_texto: [256]u8
 mensagem_len:   int
 mensagem_timer: f32
 
+// mostrar_mensagem copia `texto` para o buffer do popup (cortando se exceder) e
+// reinicia o timer de exibição.
+//
+// Parâmetros:
+// - `texto`: mensagem curta a exibir. Sem retorno.
 mostrar_mensagem :: proc(texto: string) {
 	n := len(texto)
 	if n > len(mensagem_texto) {
@@ -32,6 +46,8 @@ mostrar_mensagem :: proc(texto: string) {
 	mensagem_timer = MENSAGEM_DURACAO
 }
 
+// gui_mensagem_render desenha o popup de mensagem enquanto o timer não expira,
+// decrementando-o pelo tempo de frame. Sem retorno.
 gui_mensagem_render :: proc() {
 	if mensagem_timer <= 0 {
 		return
@@ -70,10 +86,19 @@ ArquivoModo :: enum {
 arquivo_modo: ArquivoModo
 arquivo_nome: [256]u8
 
+// algum_modal_aberto informa se há algum modal aberto na GUI.
+//
+// Retorna: `true` se o modal de mensagem ou o de arquivo estiver aberto.
 algum_modal_aberto :: proc() -> bool {
 	return modal_mensagem_aberto || modal_arquivo_aberto
 }
 
+// construir_lista_usuarios coleta os usuários existentes para os dropdowns.
+//
+// Retorna:
+// - `ids`: handles dos usuários, na ordem de iteração (alocador temporário).
+// - `texto`: nomes separados por ";" como `cstring` (lista do raygui).
+// - `quantidade`: número de usuários.
 construir_lista_usuarios :: proc() -> (ids: []EntidadeID, texto: cstring, quantidade: int) {
 	lista := make([dynamic]EntidadeID, 0, 8, context.temp_allocator)
 	b := strings.builder_make_len_cap(0, 128, context.temp_allocator)
@@ -99,6 +124,11 @@ construir_lista_usuarios :: proc() -> (ids: []EntidadeID, texto: cstring, quanti
 	return
 }
 
+// gui_modal_adicionar valida origem/destino/conteúdo e enfileira a mensagem na
+// `saida` do usuário de origem (com aviso em cada erro de validação).
+//
+// Parâmetros:
+// - `ids`: handles dos usuários, alinhados aos índices dos dropdowns. Sem retorno.
 gui_modal_adicionar :: proc(ids: []EntidadeID) {
 	if len(ids) == 0 {
 		mostrar_mensagem("Crie ao menos um usuário.")
@@ -140,6 +170,8 @@ gui_modal_adicionar :: proc(ids: []EntidadeID) {
 	}
 }
 
+// gui_modal_mensagem_render desenha o modal "Nova Mensagem": labels, textbox,
+// botões e, por último, os dropdowns de Origem/Destino. Sem retorno.
 gui_modal_mensagem_render :: proc() {
 	if !modal_mensagem_aberto {
 		return
@@ -206,12 +238,19 @@ gui_modal_mensagem_render :: proc() {
 	}
 }
 
+// abrir_modal_arquivo abre o modal de arquivo no modo indicado e limpa o campo.
+//
+// Parâmetros:
+// - `modo`: `.Exportar` ou `.Importar`. Sem retorno.
 abrir_modal_arquivo :: proc(modo: ArquivoModo) {
 	arquivo_modo = modo
 	arquivo_nome[0] = 0
 	modal_arquivo_aberto = true
 }
 
+// gui_modal_arquivo_confirmar lê o nome digitado, anexa ".json" e executa a
+// ação do modo atual. Fecha o modal apenas se a operação tiver sucesso.
+// Sem parâmetros e sem retorno.
 gui_modal_arquivo_confirmar :: proc() {
 	nome := string(cstring(&arquivo_nome[0]))
 	if len(nome) == 0 {
@@ -233,6 +272,8 @@ gui_modal_arquivo_confirmar :: proc() {
 	}
 }
 
+// gui_modal_arquivo_render desenha o modal de nome de arquivo, adaptando título
+// e rótulo do botão de ação conforme `arquivo_modo`. Sem retorno.
 gui_modal_arquivo_render :: proc() {
 	if !modal_arquivo_aberto {
 		return
@@ -275,6 +316,8 @@ gui_modal_arquivo_render :: proc() {
 	}
 }
 
+// gui_renderizar orquestra toda a GUI na ordem de desenho:
+// botões, barra inferior, popup, modais e notificações. Sem retorno.
 gui_renderizar :: proc() {
 	gui_topleft_buttons_render()
 
@@ -289,6 +332,9 @@ gui_renderizar :: proc() {
 	notificacoes_renderizar()
 }
 
+// gui_topleft_buttons_render desenha a coluna superior-esquerda com os botões
+// Criar Usuário/Comutador, Nova Mensagem, Exportar e Importar. As ações são
+// ignoradas enquanto houver modal aberto (`algum_modal_aberto`). Sem retorno.
 gui_topleft_buttons_render :: proc() {
 	center := rl.Vector2{f32(rl.GetRenderWidth()) / 2, f32(rl.GetRenderHeight()) / 2}
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 0), 150, 30}, "Criar Usuário") && !algum_modal_aberto() {
@@ -315,6 +361,8 @@ gui_topleft_buttons_render :: proc() {
 	}
 }
 
+// gui_bottom_bar_render desenha a barra inferior com o estado da simulação e os
+// botões Iniciar/Pausar e Limpar. Sem retorno.
 gui_bottom_bar_render :: proc() {
 	rect := rl.Rectangle {
 		x      = f32(rl.GetScreenWidth()) / 2 - 250,

@@ -16,6 +16,8 @@ EntitySprite :: enum {
 	Comutador,
 }
 
+// main inicializa alocadores, handle maps, texturas e roda o loop principal
+// (atualização → renderização), liberando o alocador temporário a cada frame.
 main :: proc() {
 	// Alocador Rastreador para ver vazamentos de memória.
 	when ODIN_DEBUG {

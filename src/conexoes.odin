@@ -16,6 +16,15 @@ Conexao :: struct {
 	a, b:   EntidadeID,
 }
 
+// criar_conexao insere uma conexão entre duas entidades existentes.
+// Recusa (com `mostrar_mensagem`): auto-conexão, Usuário↔Usuário e par duplicado.
+//
+// Parâmetros:
+// - `a`, `b`: handles das entidades a conectar.
+//
+// Retorna:
+// - `conexao`: handle da conexão criada.
+// - `ok`: `true` se a conexão foi criada, `false` em qualquer recusa.
 criar_conexao :: proc(a, b: EntidadeID) -> (conexao: ConexaoID, ok: bool) {
 	if a == b {
 		mostrar_mensagem("Não é possível conectar uma entidade a ela mesma.")
@@ -53,10 +62,18 @@ criar_conexao :: proc(a, b: EntidadeID) -> (conexao: ConexaoID, ok: bool) {
 	return handle, true
 }
 
+// deletar_conexao remove uma conexão do handle map.
+//
+// Parâmetros:
+// - `conexao`: handle da conexão a remover. Sem retorno.
 deletar_conexao :: proc(conexao: ConexaoID) {
 	hm.remove(&conexoes, conexao)
 }
 
+// remover_conexoes apaga todas as conexões que tocam a entidade `id`.
+//
+// Parâmetros:
+// - `id`: handle da entidade cujas conexões serão removidas. Sem retorno.
 remover_conexoes :: proc(id: EntidadeID) {
 	para_remover := make([dynamic]ConexaoID, 0, 8, context.temp_allocator)
 	it := hm.iterator_make(&conexoes)
@@ -70,6 +87,7 @@ remover_conexoes :: proc(id: EntidadeID) {
 	}
 }
 
+// conexoes_limpar remove todas as conexões existentes. Sem retorno.
 conexoes_limpar :: proc() {
 	para_remover := make([dynamic]ConexaoID, 0, 8, context.temp_allocator)
 	it := hm.iterator_make(&conexoes)
@@ -81,6 +99,12 @@ conexoes_limpar :: proc() {
 	}
 }
 
+// conexao_extremidades obtém o centro das duas entidades ligadas por `c`.
+//
+// Parâmetros:
+// - `c`: ponteiro para a conexão.
+//
+// Retorna: os centros das entidades `a` e `b`; vetores zero se alguma não existir.
 conexao_extremidades :: proc(c: ^Conexao) -> (rl.Vector2, rl.Vector2) {
 	ea, ok_a := hm.get(&entidades, c.a)
 	eb, ok_b := hm.get(&entidades, c.b)
@@ -90,6 +114,12 @@ conexao_extremidades :: proc(c: ^Conexao) -> (rl.Vector2, rl.Vector2) {
 	return ea.posicao, eb.posicao
 }
 
+// get_extremidades obtém o centro das entidades de uma conexão pelo handle.
+//
+// Parâmetros:
+// - `conexao`: handle da conexão.
+//
+// Retorna: os centros das entidades ligadas; vetores zero se a conexão não existir.
 get_extremidades :: proc(conexao: ConexaoID) -> (rl.Vector2, rl.Vector2) {
 	c, ok := hm.get(&conexoes, conexao)
 	if !ok {
@@ -98,6 +128,13 @@ get_extremidades :: proc(conexao: ConexaoID) -> (rl.Vector2, rl.Vector2) {
 	return conexao_extremidades(c)
 }
 
+// conexoes_entidade lista os vizinhos (entidades diretamente conectadas).
+//
+// Parâmetros:
+// - `entidade`: handle da entidade consultada.
+// - `alocador`: alocador do slice resultante (padrão: alocador temporário).
+//
+// Retorna: slice com os handles dos vizinhos.
 conexoes_entidade :: proc(entidade: EntidadeID, alocador := context.temp_allocator) -> []EntidadeID {
 	vizinhos := make([dynamic]EntidadeID, 0, 8, alocador)
 	it := hm.iterator_make(&conexoes)
@@ -116,6 +153,11 @@ ESPESSURA_CONEXAO_HOVER :: 5.0
 COR_CONEXAO             :: rl.LIGHTGRAY
 COR_CONEXAO_HOVER       :: rl.YELLOW
 
+// conexao_sob_mouse identifica a conexão sob o cursor (com tolerância de 8px).
+//
+// Retorna:
+// - handle da conexão sob o mouse;
+// - `true` se encontrou alguma, `false` caso contrário.
 conexao_sob_mouse :: proc() -> (ConexaoID, bool) {
 	mouse := rl.GetMousePosition()
 	it := hm.iterator_make(&conexoes)
@@ -128,6 +170,8 @@ conexao_sob_mouse :: proc() -> (ConexaoID, bool) {
 	return {}, false
 }
 
+// conexoes_renderizar desenha as linhas centro-a-centro, com espessura/cor de
+// destaque para a conexão sob o mouse. Sem retorno.
 conexoes_renderizar :: proc() {
 	hover, tem_hover := conexao_sob_mouse()
 	it := hm.iterator_make(&conexoes)

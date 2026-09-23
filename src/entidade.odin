@@ -42,6 +42,16 @@ entidades_selecionadas := EntidadesSelecionadas {
 	selecionadas = [2]EntidadeID{}
 }
 
+// entidade_new insere uma nova entidade no handle map global.
+//
+// Parâmetros:
+// - `dados`: união `Comutador`/`Usuario` que define o tipo da entidade.
+// - `posicao`: centro da entidade na tela.
+// - `sprite`: textura compartilhada usada na renderização.
+//
+// Retorna:
+// - `id`: handle da entidade criada.
+// - `ok`: `true` se a inserção e a leitura do handle funcionaram.
 entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) -> (id: EntidadeID, ok: bool) {
 	entidade := Entidade {
 		sprite        = sprite,
@@ -65,6 +75,14 @@ entidade_new :: proc(dados: Dados, posicao: rl.Vector2, sprite: rl.Texture2D) ->
 	return EntidadeID{}, false
 }
 
+// entidade_free libera uma entidade e tudo que depende dela.
+// Chama `usuario_free`/`comutador_free`, remove as conexões ligadas a ela e a
+// retira do handle map. Não descarrega a textura, pois os sprites são globais.
+//
+// Parâmetros:
+// - `id`: handle da entidade a remover.
+//
+// Retorna: `true` se a entidade existia e foi removida, `false` caso contrário.
 entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
 	entidade := hm.get(&entidades, id) or_return
 
@@ -83,6 +101,9 @@ entidade_free :: proc(id: EntidadeID) -> (ok: bool) {
 	return true
 }
 
+// entidades_limpar remove todas as entidades e conexões do estado atual.
+// Ordem: limpa pacotes (`simulacao_limpar`), libera `dados` de cada entidade,
+// remove-as do handle map, limpa as conexões e zera a seleção. Sem retorno.
 entidades_limpar :: proc() {
 	simulacao_limpar()
 
@@ -109,6 +130,10 @@ entidades_limpar :: proc() {
 	entidades_selecionadas.quantidade = 0
 }
 
+// entidade_update recalcula posição (se arrastada) e o colisor de mouse.
+//
+// Parâmetros:
+// - `entidade`: ponteiro para a entidade a atualizar. Sem retorno.
 entidade_update :: proc(entidade: ^Entidade) {
 	if entidade.segurado {
 		entidade.posicao = rl.GetMousePosition() + entidade.offset_mouse
@@ -118,6 +143,12 @@ entidade_update :: proc(entidade: ^Entidade) {
 	entidade.colisor_mouse.y = entidade.posicao.y - TAMANHO_COLISOR / 2
 }
 
+// entidade_arrastar inicia o arraste sob o clique esquerdo e solta ao liberar.
+//
+// Parâmetros:
+// - `entidade`: entidade candidata ao arraste.
+// - `holding_another`: flag compartilhada que impede pegar mais de uma entidade
+//   no mesmo frame; é marcada como `true` quando o arraste começa. Sem retorno.
 entidade_arrastar :: proc(entidade: ^Entidade, holding_another: ^bool) {
 	if rl.IsMouseButtonPressed(.LEFT) {
 		if rl.CheckCollisionPointRec(rl.GetMousePosition(), entidade.colisor_mouse) {
@@ -130,6 +161,11 @@ entidade_arrastar :: proc(entidade: ^Entidade, holding_another: ^bool) {
 	}
 }
 
+// entidades_selecionar acumula IDs na seleção (até 2) e, ao completar dois,
+// tenta criar uma conexão entre eles e reinicia a seleção.
+//
+// Parâmetros:
+// - `id`: handle da entidade selecionada. Sem retorno.
 entidades_selecionar :: proc(id: EntidadeID) {
 	entidades_selecionadas.selecionadas[entidades_selecionadas.quantidade] = id
 	entidades_selecionadas.quantidade += 1
@@ -143,6 +179,8 @@ entidades_selecionar :: proc(id: EntidadeID) {
 	}
 }
 
+// entidades_atualizar percorre as entidades aplicando arraste/update e, ao fim,
+// trata o clique direito (`entidades_processar_click_direito`). Sem retorno.
 entidades_atualizar :: proc() {
 	it := hm.iterator_make(&entidades)
 	holding_another := false
@@ -160,6 +198,9 @@ entidades_atualizar :: proc() {
 	}
 }
 
+// entidades_processar_click_direito trata o clique direito do mouse:
+// entidade → selecionar; conexão com seleção pendente → avisar; conexão → apagar;
+// área vazia → cancelar a seleção. Sem retorno.
 entidades_processar_click_direito :: proc() {
 	mouse := rl.GetMousePosition()
 
@@ -183,6 +224,8 @@ entidades_processar_click_direito :: proc() {
 	entidades_selecionadas.quantidade = 0
 }
 
+// entidades_renderizar desenha cada sprite (com `ESCALA_ENTIDADE`), seu rótulo
+// e um destaque amarelo na primeira entidade selecionada. Sem retorno.
 entidades_renderizar :: proc() {
 	it := hm.iterator_make(&entidades)
 	for entidade, handle in hm.iterate(&it) {
@@ -206,6 +249,10 @@ entidades_renderizar :: proc() {
 	}
 }
 
+// entidade_rotulo_renderizar desenha o nome abaixo do sprite (apenas Usuário).
+//
+// Parâmetros:
+// - `entidade`: entidade cujo rótulo será desenhado. Sem retorno.
 entidade_rotulo_renderizar :: proc(entidade: ^Entidade) {
 	switch &dados in entidade.dados {
 	case Usuario:

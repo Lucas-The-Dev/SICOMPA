@@ -18,12 +18,24 @@ Pacote :: struct {
 	cor:         rl.Color,
 }
 
+// pacote_free libera os buffers de `bytes` e `historico` e zera o pacote.
+//
+// Parâmetros:
+// - `pacote`: ponteiro para o pacote a liberar. Sem retorno.
 pacote_free :: proc(pacote: ^Pacote) {
 	delete(pacote.bytes)
 	delete(pacote.historico)
 	pacote^ = {}
 }
 
+// pacote_clone faz uma cópia profunda do pacote (novos buffers de `bytes` e
+// `historico`), necessária ao flooding para ramificar o envio.
+//
+// Parâmetros:
+// - `pacote`: pacote original.
+// - `alocador`: alocador dos novos buffers.
+//
+// Retorna: um `Pacote` independente do original.
 pacote_clone :: proc(pacote: Pacote, alocador := context.allocator) -> Pacote {
 	clone := pacote
 	clone.bytes = make([]rune, len(pacote.bytes), alocador)

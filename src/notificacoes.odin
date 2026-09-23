@@ -13,6 +13,11 @@ Notificacao :: struct {
 
 notificacoes: [dynamic]Notificacao
 
+// notificar enfileira uma notificação no topo-direito com duração padrão,
+// clonando o texto no alocador global.
+//
+// Parâmetros:
+// - `texto`: mensagem exibida no cartão. Sem retorno.
 notificar :: proc(texto: string) {
 	append(&notificacoes, Notificacao{
 		texto = strings.clone(texto, context.allocator),
@@ -20,12 +25,19 @@ notificar :: proc(texto: string) {
 	})
 }
 
+// notificar_mensagem_recebida monta e enfileira o aviso de mensagem recebida.
+//
+// Parâmetros:
+// - `nome`: nome do usuário destinatário.
+// - `conteudo`: texto remontado da mensagem. Sem retorno.
 notificar_mensagem_recebida :: proc(nome: string, conteudo: string) {
 	texto := fmt.aprintf("Usuário %s recebeu a mensagem: %s", nome, conteudo)
 	defer delete(texto)
 	notificar(texto)
 }
 
+// notificacoes_atualizar decrementa o timer de cada notificação e remove as
+// expiradas (liberando o texto). Sem retorno.
 notificacoes_atualizar :: proc() {
 	if len(notificacoes) == 0 {
 		return
@@ -44,6 +56,8 @@ notificacoes_atualizar :: proc() {
 	}
 }
 
+// notificacoes_renderizar desenha os cartões empilhados no topo-direito, com
+// fade de saída baseado no timer. Sem retorno.
 notificacoes_renderizar :: proc() {
 	largura: f32 = 420
 	altura: f32 = 48
@@ -73,6 +87,8 @@ notificacoes_renderizar :: proc() {
 	}
 }
 
+// notificacoes_limpar libera os textos de todas as notificações e esvazia a
+// lista global. Sem retorno.
 notificacoes_limpar :: proc() {
 	for i in 0 ..< len(notificacoes) {
 		delete(notificacoes[i].texto)

@@ -23,6 +23,12 @@ Usuario :: struct {
 	recebidas: [dynamic]Mensagem,
 }
 
+// usuario_new cria um usuário com nome automático ("Usuário N") e listas vazias.
+//
+// Parâmetros:
+// - `alocador`: alocador usado para nome e listas dinâmicas.
+//
+// Retorna: o `Usuario` inicializado (incrementa `proximo_usuario_id`).
 usuario_new :: proc(alocador := context.allocator) -> (usuario: Usuario) {
 	usuario.alocador = alocador
 	proximo_usuario_id += 1
@@ -33,6 +39,11 @@ usuario_new :: proc(alocador := context.allocator) -> (usuario: Usuario) {
 	return usuario
 }
 
+// usuario_free libera nome, conteúdos das mensagens, pacotes de entrada e as
+// listas dinâmicas do usuário.
+//
+// Parâmetros:
+// - `usuario`: ponteiro para o usuário a destruir. Sem retorno.
 usuario_free :: proc(usuario: ^Usuario) {
 	delete(usuario.nome)
 
@@ -52,6 +63,14 @@ usuario_free :: proc(usuario: ^Usuario) {
 	delete(usuario.recebidas)
 }
 
+// usuario_enviar fragmenta o conteúdo da mensagem em blocos de
+// `RUNES_POR_PACOTE` e envia um clone a cada vizinho de `mensagem.origem`.
+//
+// Parâmetros:
+// - `usuario`: usuário de origem (define o alocador dos clones).
+// - `mensagem`: mensagem a enviar.
+//
+// Retorna: `false` se a origem não tem vizinhos; `true` caso os pacotes sejam lançados.
 usuario_enviar :: proc(usuario: ^Usuario, mensagem: Mensagem) -> (ok: bool) {
 	vizinhos := conexoes_entidade(mensagem.origem, context.temp_allocator)
 	if len(vizinhos) == 0 {
@@ -91,6 +110,13 @@ usuario_enviar :: proc(usuario: ^Usuario, mensagem: Mensagem) -> (ok: bool) {
 	return true
 }
 
+// usuario_receber acumula fragmentos de uma mensagem com dedupe por
+// `(mensagem_id, indice)`. Ao completar `total` fragmentos, remonta a string,
+// move a mensagem para `recebidas`, notifica e descarta os fragmentos.
+//
+// Parâmetros:
+// - `usuario`: usuário destinatário.
+// - `pacote`: fragmento recebido. Sem retorno.
 usuario_receber :: proc(usuario: ^Usuario, pacote: Pacote) {
 	for mensagem in usuario.recebidas {
 		if mensagem.id == pacote.mensagem_id {
@@ -140,6 +166,12 @@ usuario_receber :: proc(usuario: ^Usuario, pacote: Pacote) {
 	usuario_remover_fragmentos(usuario, pacote.mensagem_id)
 }
 
+// usuario_remover_fragmentos remove de `entrada` todos os fragmentos da
+// mensagem `mensagem_id`, liberando-os.
+//
+// Parâmetros:
+// - `usuario`: usuário dono da lista de entrada.
+// - `mensagem_id`: id da mensagem cujos fragmentos serão descartados. Sem retorno.
 usuario_remover_fragmentos :: proc(usuario: ^Usuario, mensagem_id: u32) {
 	i := 0
 	for i < len(usuario.entrada) {

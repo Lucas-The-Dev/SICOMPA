@@ -31,7 +31,12 @@ Esquema :: struct {
 	conexoes:  []ConexaoEsquema  `json:"conexoes"`,
 }
 
-// Anexa a extensão ".json" caso ainda não esteja presente.
+// com_extensao_json garante que o nome de arquivo termine em ".json".
+//
+// Parâmetros:
+// - `nome`: nome informado pelo usuário, com ou sem extensão.
+//
+// Retorna: nova string (alocador temporário) com ".json" anexado se necessário.
 com_extensao_json :: proc(nome: string) -> string {
 	if strings.has_suffix(nome, ".json") {
 		return strings.clone(nome, context.temp_allocator)
@@ -39,7 +44,14 @@ com_extensao_json :: proc(nome: string) -> string {
 	return strings.concatenate({nome, ".json"}, context.temp_allocator)
 }
 
-// Wrappers de arquivo para isolar a API de `core:os`.
+// arquivo_ler lê todo o conteúdo de um arquivo, isolando a API de `core:os`.
+//
+// Parâmetros:
+// - `nome`: caminho/nome do arquivo a ser lido.
+//
+// Retorna:
+// - `data`: bytes lidos (alocados no alocador temporário); `nil` em caso de erro.
+// - `ok`: `true` se a leitura foi bem-sucedida, `false` caso contrário.
 arquivo_ler :: proc(nome: string) -> (data: []byte, ok: bool) {
 	d, err := os.read_entire_file(nome, context.temp_allocator)
 	if err != nil {
@@ -48,13 +60,23 @@ arquivo_ler :: proc(nome: string) -> (data: []byte, ok: bool) {
 	return d, true
 }
 
+// arquivo_escrever grava `data` no arquivo `nome`, isolando a API de `core:os`.
+//
+// Parâmetros:
+// - `nome`: caminho/nome do arquivo de destino (criado/truncado).
+// - `data`: bytes a serem gravados.
+//
+// Retorna: `true` se a gravação foi bem-sucedida, `false` caso contrário.
 arquivo_escrever :: proc(nome: string, data: []byte) -> bool {
 	err := os.write_entire_file(nome, data)
 	return err == nil
 }
 
-// Monta o esquema a partir do estado atual (somente entidades, posições,
-// nomes de usuário e conexões). As alocações usam o alocador temporário.
+// montar_esquema converte o estado atual em uma estrutura serializável.
+// Inclui apenas entidades (tipo, posição, nome de usuário) e conexões
+// (referenciadas por índice); mensagens/pendências são ignoradas.
+//
+// Retorna: `Esquema` com as alocações no alocador temporário.
 montar_esquema :: proc() -> Esquema {
 	entidades_esquema := make([dynamic]EntidadeEsquema, 0, 16, context.temp_allocator)
 	indices := make(map[EntidadeID]int)
@@ -103,6 +125,12 @@ montar_esquema :: proc() -> Esquema {
 	}
 }
 
+// exportar_esquema serializa o estado atual em JSON e grava no arquivo `nome`.
+//
+// Parâmetros:
+// - `nome`: nome do arquivo de destino (JSON pretty, 4 espaços).
+//
+// Retorna: `true` em caso de sucesso; em falha, exibe mensagem e retorna `false`.
 exportar_esquema :: proc(nome: string) -> bool {
 	esquema := montar_esquema()
 
@@ -126,6 +154,14 @@ exportar_esquema :: proc(nome: string) -> bool {
 	return true
 }
 
+// importar_esquema lê o JSON de `nome` e substitui o esquema atual.
+// Valida o arquivo; em sucesso, limpa o estado (`entidades_limpar`), zera os
+// contadores de IDs, recria entidades (tipo, posição e nome) e refaz as conexões.
+//
+// Parâmetros:
+// - `nome`: nome do arquivo JSON de origem.
+//
+// Retorna: `true` em caso de sucesso; em falha, exibe mensagem e retorna `false`.
 importar_esquema :: proc(nome: string) -> bool {
 	data, ok := arquivo_ler(nome)
 	if !ok {

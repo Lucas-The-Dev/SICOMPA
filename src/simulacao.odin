@@ -20,10 +20,22 @@ CORES_MENSAGEM := [6]rl.Color {
 	rl.GOLD,
 }
 
+// cor_para_mensagem escolhe uma cor estável a partir do id da mensagem.
+//
+// Parâmetros:
+// - `id`: id da mensagem.
+//
+// Retorna: a cor correspondente na paleta `CORES_MENSAGEM`.
 cor_para_mensagem :: proc(id: u32) -> rl.Color {
 	return CORES_MENSAGEM[id % u32(len(CORES_MENSAGEM))]
 }
 
+// posicao_entidade consulta o centro de uma entidade.
+//
+// Parâmetros:
+// - `id`: handle da entidade.
+//
+// Retorna: centro da entidade e `true` se ela existe; caso contrário `{}`/`false`.
 posicao_entidade :: proc(id: EntidadeID) -> (rl.Vector2, bool) {
 	entidade, ok := hm.get(&entidades, id)
 	if !ok {
@@ -32,6 +44,12 @@ posicao_entidade :: proc(id: EntidadeID) -> (rl.Vector2, bool) {
 	return entidade.posicao, true
 }
 
+// pacote_enviar define o trecho atual (`de`→`para`), zera o progresso e enfileira
+// o pacote no array global `pacotes` (o dono passa a ser a simulação).
+//
+// Parâmetros:
+// - `pacote`: pacote a enfileirar.
+// - `de`, `para`: entidades de origem e destino deste salto. Sem retorno.
 pacote_enviar :: proc(pacote: ^Pacote, de, para: EntidadeID) {
 	pacote.de = de
 	pacote.para = para
@@ -39,6 +57,14 @@ pacote_enviar :: proc(pacote: ^Pacote, de, para: EntidadeID) {
 	append(&pacotes, pacote^)
 }
 
+// entidade_no_historico verifica se `id` já consta no histórico do pacote,
+// evitando que o flooding volte a um nó por onde já passou.
+//
+// Parâmetros:
+// - `historico`: lista de comutadores já visitados.
+// - `id`: entidade consultada.
+//
+// Retorna: `true` se encontrada, `false` caso contrário.
 entidade_no_historico :: proc(historico: [dynamic]EntidadeID, id: EntidadeID) -> bool {
 	for h in historico {
 		if h == id {
@@ -48,6 +74,13 @@ entidade_no_historico :: proc(historico: [dynamic]EntidadeID, id: EntidadeID) ->
 	return false
 }
 
+// pacote_chegar trata um pacote que atingiu `pacote.para`.
+// Se `para` é o destino, entrega ao usuário (`usuario_receber`); se é um
+// comutador, aplica o flooding (encaminha ao destino se for vizinho, senão
+// clona para vizinhos fora do histórico/`de`).
+//
+// Parâmetros:
+// - `pacote`: pacote que chegou ao nó. Sem retorno.
 pacote_chegar :: proc(pacote: Pacote) {
 	if pacote.destino == pacote.para {
 		if entidade, ok := hm.get(&entidades, pacote.para); ok {
@@ -99,6 +132,9 @@ pacote_chegar :: proc(pacote: Pacote) {
 	}
 }
 
+// simulacao_escoar_saidas percorre os usuários e envia todas as mensagens
+// pendentes em `saida`, descartando-as em seguida. Avisa quando a origem não
+// tem conexões. Sem retorno.
 simulacao_escoar_saidas :: proc() {
 	it := hm.iterator_make(&entidades)
 	for entidade, _ in hm.iterate(&it) {
@@ -117,6 +153,10 @@ simulacao_escoar_saidas :: proc() {
 	}
 }
 
+// simulacao_tem_pendencia informa se ainda há trabalho a escoar.
+//
+// Retorna: `true` se algum usuário tem mensagens em `saida` ou fragmentos em
+// `entrada`, `false` caso contrário.
 simulacao_tem_pendencia :: proc() -> bool {
 	it := hm.iterator_make(&entidades)
 	for entidade, _ in hm.iterate(&it) {
@@ -131,6 +171,8 @@ simulacao_tem_pendencia :: proc() -> bool {
 	return false
 }
 
+// simulacao_iniciar ativa a simulação. Sem pacotes em trânsito nem pendências,
+// apenas avisa e mantém a simulação parada. Sem retorno.
 simulacao_iniciar :: proc() {
 	if len(pacotes) == 0 && !simulacao_tem_pendencia() {
 		mostrar_mensagem("Sem mensagens para simular.")
@@ -141,6 +183,9 @@ simulacao_iniciar :: proc() {
 	simulacao_escoar_saidas()
 }
 
+// simulacao_atualizar avança a simulação por frame: escoa saídas, move cada
+// pacote por `VELOCIDADE_PACOTE` (entregando ao chegar) e para sozinha quando
+// não há mais pacotes nem pendências. Sem retorno.
 simulacao_atualizar :: proc() {
 	if !simulacao_ativa {
 		return
@@ -184,6 +229,8 @@ simulacao_atualizar :: proc() {
 	}
 }
 
+// simulacao_limpar libera todos os pacotes em trânsito, esvazia o array global
+// e desativa a simulação. Sem retorno.
 simulacao_limpar :: proc() {
 	for i in 0 ..< len(pacotes) {
 		pacote_free(&pacotes[i])
@@ -192,6 +239,8 @@ simulacao_limpar :: proc() {
 	simulacao_ativa = false
 }
 
+// pacotes_renderizar desenha cada pacote interpolado entre `de` e `para`, com um
+// rastro na direção do movimento. Sem retorno.
 pacotes_renderizar :: proc() {
 	for pacote in pacotes {
 		p_de, ok_de := posicao_entidade(pacote.de)
