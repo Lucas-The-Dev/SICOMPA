@@ -7,6 +7,10 @@ RUNES_POR_PACOTE :: 8
 Pacote :: struct {
 	origem:      EntidadeID,
 	destino:     EntidadeID,
+	ip_origem:   Ip,
+	ip_destino:  Ip,
+	protocolo:   Protocolo,
+	ttl:         u8,
 	mensagem_id: u32,
 	indice:      int,
 	total:       int,

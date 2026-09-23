@@ -75,6 +75,8 @@ mensagem_origem:   i32
 mensagem_destino:  i32
 mensagem_origem_edit:  bool
 mensagem_destino_edit: bool
+mensagem_protocolo:      Protocolo = .UDP
+mensagem_protocolo_idx:  i32
 
 modal_arquivo_aberto: bool
 
@@ -88,6 +90,7 @@ arquivo_nome: [256]u8
 
 modal_nome_usuario_aberto: bool
 nome_usuario_buffer:      [256]u8
+ip_usuario_buffer:        [256]u8
 
 // definir_buffer copia `texto` para o buffer fixo (null-terminado), cortando se exceder.
 //
@@ -133,7 +136,7 @@ construir_lista_usuarios :: proc() -> (ids: []EntidadeID, texto: cstring, quanti
 			if indice > 0 {
 				fmt.sbprintf(&b, ";")
 			}
-			fmt.sbprintf(&b, "%s", dados.nome)
+			fmt.sbprintf(&b, "%s (%s)", dados.nome, ip_para_string(dados.ip))
 			indice += 1
 		case Comutador:
 		}
@@ -179,19 +182,21 @@ gui_modal_adicionar :: proc(ids: []EntidadeID) {
 	switch &dados in entidade.dados {
 	case Usuario:
 		mensagem := Mensagem {
-			id       = proximo_mensagem_id,
-			origem   = origem,
-			destino  = destino,
-			conteudo = strings.clone(texto, dados.alocador),
+			id        = proximo_mensagem_id,
+			origem    = origem,
+			destino   = destino,
+			conteudo  = strings.clone(texto, dados.alocador),
+			protocolo = mensagem_protocolo,
 		}
 		proximo_mensagem_id += 1
 		append(&dados.saida, mensagem)
 
 		historico := Mensagem {
-			id       = mensagem.id,
-			origem   = origem,
-			destino  = destino,
-			conteudo = strings.clone(texto, dados.alocador),
+			id        = mensagem.id,
+			origem    = origem,
+			destino   = destino,
+			conteudo  = strings.clone(texto, dados.alocador),
+			protocolo = mensagem_protocolo,
 		}
 		append(&dados.enviadas, historico)
 
@@ -209,9 +214,9 @@ gui_modal_mensagem_render :: proc() {
 
 	bounds := rl.Rectangle {
 		x      = f32(rl.GetRenderWidth()) / 2 - 220,
-		y      = f32(rl.GetRenderHeight()) / 2 - 170,
+		y      = f32(rl.GetRenderHeight()) / 2 - 190,
 		width  = 440,
-		height = 340,
+		height = 380,
 	}
 	rl.GuiWindowBox(bounds, "Nova Mensagem")
 
@@ -231,9 +236,25 @@ gui_modal_mensagem_render :: proc() {
 
 	rl.GuiLabel({bounds.x + 20, bounds.y + 40, 60, 24}, "Origem")
 	rl.GuiLabel({bounds.x + 20, bounds.y + 80, 60, 24}, "Destino")
-	rl.GuiLabel({bounds.x + 20, bounds.y + 120, 80, 24}, "Conteúdo")
+	rl.GuiLabel({bounds.x + 20, bounds.y + 120, 80, 24}, "Protocolo")
+	rl.GuiLabel({bounds.x + 20, bounds.y + 160, 80, 24}, "Conteúdo")
 
-	rl.GuiTextBox({bounds.x + 100, bounds.y + 120, 300, 24}, cstring(&mensagem_conteudo[0]), len(mensagem_conteudo), !dropdown_aberto)
+	rl.GuiToggleGroup(
+		{bounds.x + 100, bounds.y + 120, 149, 24},
+		"UDP;TCP",
+		&mensagem_protocolo_idx,
+	)
+	if mensagem_protocolo_idx != 0 {
+		mostrar_mensagem("TCP ainda não implementado.")
+		mensagem_protocolo_idx = 0
+	}
+	if mensagem_protocolo_idx == 0 {
+		mensagem_protocolo = .UDP
+	} else {
+		mensagem_protocolo = .TCP
+	}
+
+	rl.GuiTextBox({bounds.x + 100, bounds.y + 160, 300, 24}, cstring(&mensagem_conteudo[0]), len(mensagem_conteudo), !dropdown_aberto)
 
 	adicionar := rl.GuiButton({bounds.x + bounds.width - 250, bounds.y + bounds.height - 40, 110, 30}, "Adicionar")
 	cancelar := rl.GuiButton({bounds.x + bounds.width - 130, bounds.y + bounds.height - 40, 110, 30}, "Cancelar")
@@ -352,6 +373,7 @@ abrir_modal_nome_usuario :: proc() {
 	sugestao := fmt.aprintf("Usuário %v", proximo_usuario_id + 1)
 	defer delete(sugestao)
 	definir_buffer(nome_usuario_buffer[:], sugestao)
+	definir_buffer(ip_usuario_buffer[:], ip_para_string(ip_sugerido()))
 	modal_nome_usuario_aberto = true
 }
 
@@ -364,17 +386,25 @@ gui_modal_nome_usuario_render :: proc() {
 
 	bounds := rl.Rectangle {
 		x      = f32(rl.GetRenderWidth()) / 2 - 200,
-		y      = f32(rl.GetRenderHeight()) / 2 - 80,
+		y      = f32(rl.GetRenderHeight()) / 2 - 100,
 		width  = 400,
-		height = 160,
+		height = 200,
 	}
 	rl.GuiWindowBox(bounds, "Criar Usuário")
 
-	rl.GuiLabel({bounds.x + 20, bounds.y + 50, 90, 24}, "Nome")
+	rl.GuiLabel({bounds.x + 20, bounds.y + 45, 90, 24}, "Nome")
 	rl.GuiTextBox(
-		{bounds.x + 110, bounds.y + 50, 260, 24},
+		{bounds.x + 110, bounds.y + 45, 260, 24},
 		cstring(&nome_usuario_buffer[0]),
 		len(nome_usuario_buffer),
+		true,
+	)
+
+	rl.GuiLabel({bounds.x + 20, bounds.y + 85, 90, 24}, "IP")
+	rl.GuiTextBox(
+		{bounds.x + 110, bounds.y + 85, 260, 24},
+		cstring(&ip_usuario_buffer[0]),
+		len(ip_usuario_buffer),
 		true,
 	)
 
@@ -383,9 +413,22 @@ gui_modal_nome_usuario_render :: proc() {
 		"Criar",
 	) {
 		nome := string(cstring(&nome_usuario_buffer[0]))
+		ip_texto := string(cstring(&ip_usuario_buffer[0]))
+
+		ip, ip_ok := ip_de_string(ip_texto)
+		if !ip_ok {
+			mostrar_mensagem("IP inválido.")
+			return
+		}
+		if ip_em_uso(ip) {
+			mostrar_mensagem("IP já está em uso.")
+			return
+		}
+
 		center := rl.Vector2{f32(rl.GetRenderWidth()) / 2, f32(rl.GetRenderHeight()) / 2}
-		if _, ok := entidade_new(usuario_new(nome), center, sprites[.Usuario]); !ok {
+		if _, ok := entidade_new(usuario_new(nome, ip), center, sprites[.Usuario]); !ok {
 			mostrar_mensagem("Falha ao criar usuário.")
+			return
 		}
 		modal_nome_usuario_aberto = false
 	}
@@ -433,6 +476,8 @@ gui_topleft_buttons_render :: proc() {
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 2), 150, 30}, "Nova Mensagem") && !algum_modal_aberto() {
 		modal_mensagem_aberto = true
 		mensagem_conteudo[0] = 0
+		mensagem_protocolo = .UDP
+		mensagem_protocolo_idx = 0
 		mensagem_origem_edit = false
 		mensagem_destino_edit = false
 	}
@@ -452,9 +497,9 @@ gui_topleft_buttons_render :: proc() {
 // botões Iniciar/Pausar e Limpar. Sem retorno.
 gui_bottom_bar_render :: proc() {
 	rect := rl.Rectangle {
-		x      = f32(rl.GetScreenWidth()) / 2 - 250,
+		x      = f32(rl.GetScreenWidth()) / 2 - 350,
 		y      = f32(rl.GetScreenHeight()) - 70,
-		width  = 500,
+		width  = 700,
 		height = 50,
 	}
 	rl.GuiPanel(rect, "")
@@ -479,4 +524,15 @@ gui_bottom_bar_render :: proc() {
 	if rl.GuiButton({rect.x + 250, rect.y + 10, 120, 30}, "Limpar") {
 		simulacao_limpar()
 	}
+
+	perda_pct := probabilidade_perda * 100
+	rl.GuiSlider(
+		{rect.x + 490, rect.y + 15, 190, 16},
+		"Perda%",
+		"",
+		&perda_pct,
+		0,
+		100,
+	)
+	probabilidade_perda = perda_pct / 100
 }

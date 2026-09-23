@@ -6,7 +6,7 @@ import "core:os"
 import "core:strings"
 import rl "vendor:raylib"
 
-VERSION_ESQUEMA :: 1
+VERSION_ESQUEMA :: 2
 
 TipoEntidade :: enum {
 	Usuario,
@@ -18,6 +18,7 @@ EntidadeEsquema :: struct {
 	x:    f32          `json:"x"`,
 	y:    f32          `json:"y"`,
 	nome: string       `json:"nome,omitempty"`,
+	ip:   string       `json:"ip,omitempty"`,
 }
 
 ConexaoEsquema :: struct {
@@ -86,11 +87,13 @@ montar_esquema :: proc() -> Esquema {
 	for entidade, handle in hm.iterate(&it) {
 		tipo: TipoEntidade
 		nome: string
+		ip: string
 
 		switch &dados in entidade.dados {
 		case Usuario:
 			tipo = .Usuario
 			nome = dados.nome
+			ip = ip_para_string(dados.ip)
 		case Comutador:
 			tipo = .Comutador
 		}
@@ -103,6 +106,7 @@ montar_esquema :: proc() -> Esquema {
 				x = entidade.posicao.x,
 				y = entidade.posicao.y,
 				nome = nome,
+				ip = ip,
 			},
 		)
 	}
@@ -175,6 +179,11 @@ importar_esquema :: proc(nome: string) -> bool {
 		return false
 	}
 
+	if esquema.versao > VERSION_ESQUEMA {
+		mostrar_mensagem("Versão de esquema não suportada.")
+		return false
+	}
+
 	if len(esquema.entidades) == 0 {
 		mostrar_mensagem("O esquema não possui entidades.")
 		return false
@@ -193,10 +202,11 @@ importar_esquema :: proc(nome: string) -> bool {
 
 		switch e.tipo {
 		case .Usuario:
-			u := usuario_new()
-			delete(u.nome)
-			u.nome = strings.clone(e.nome, u.alocador)
-			dados = u
+			ip := Ip{}
+			if parseado, ip_ok := ip_de_string(e.ip); ip_ok && !ip_em_uso(parseado) {
+				ip = parseado
+			}
+			dados = usuario_new(e.nome, ip)
 			sprite = sprites[.Usuario]
 		case .Comutador:
 			dados = comutador_new()

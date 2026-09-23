@@ -13,6 +13,21 @@ logs_ativos: bool = true
 VELOCIDADE_PACOTE :: 260.0
 RAIO_PACOTE :: 7.0
 
+TTL_PADRAO :: 32
+
+// probabilidade_perda é a chance (0.0..1.0) de descartar um pacote a cada salto.
+probabilidade_perda: f32 = 0
+
+// perder_pacote sorteia se o pacote é descartado neste salto.
+//
+// Retorna: `true` se o pacote deve ser perdido.
+perder_pacote :: proc() -> bool {
+	if probabilidade_perda <= 0 {
+		return false
+	}
+	return rl.GetRandomValue(0, 9999) < i32(probabilidade_perda * 10000)
+}
+
 @(rodata)
 CORES_MENSAGEM := [6]rl.Color {
 	rl.SKYBLUE,
@@ -34,7 +49,7 @@ cor_para_mensagem :: proc(id: u32) -> rl.Color {
 }
 
 // log_pacote imprime no terminal um evento do pacote (salto, entrega, descarte),
-// com origem/destino legíveis e o histórico de comutadores visitados.
+// com protocolo, IPs de origem/destino, TTL e o histórico de comutadores.
 //
 // Parâmetros:
 // - `pacote`: pacote envolvido no evento.
@@ -55,13 +70,17 @@ log_pacote :: proc(pacote: Pacote, evento: string) {
 	fmt.sbprintf(&hist, "]")
 
 	fmt.printf(
-		"[msg %v][pkt %v/%v] %s: %s -> %s | hist=%s\n",
+		"[msg %v][pkt %v/%v][%s] %s: %s(%s) -> %s(%s) | ttl=%v | hist=%s\n",
 		pacote.mensagem_id,
 		pacote.indice,
 		pacote.total,
+		nome_protocolo(pacote.protocolo),
 		evento,
 		nome_entidade(pacote.de),
+		ip_para_string(pacote.ip_origem),
 		nome_entidade(pacote.para),
+		ip_para_string(pacote.ip_destino),
+		pacote.ttl,
 		strings.to_string(hist),
 	)
 }
@@ -118,20 +137,28 @@ entidade_no_historico :: proc(historico: [dynamic]EntidadeID, id: EntidadeID) ->
 //
 // Parâmetros:
 // - `pacote`: pacote que chegou ao nó. Sem retorno.
-pacote_chegar :: proc(pacote: Pacote) {
-	if pacote.destino == pacote.para {
-		log_pacote(pacote, "ENTREGA")
-		if entidade, ok := hm.get(&entidades, pacote.para); ok {
+pacote_chegar :: proc(pacote_entrada: Pacote) {
+	// Cópia local mutável (parâmetros Odin são imutáveis).
+	p := pacote_entrada
+
+	if perder_pacote() {
+		log_pacote(p, "PERDIDO")
+		return
+	}
+
+	if p.destino == p.para {
+		log_pacote(p, "ENTREGA")
+		if entidade, ok := hm.get(&entidades, p.para); ok {
 			switch &dados in entidade.dados {
 			case Usuario:
-				usuario_receber(&dados, pacote)
+				usuario_receber(&dados, p)
 			case Comutador:
 			}
 		}
 		return
 	}
 
-	entidade, ok := hm.get(&entidades, pacote.para)
+	entidade, ok := hm.get(&entidades, p.para)
 	if !ok {
 		return
 	}
@@ -139,34 +166,40 @@ pacote_chegar :: proc(pacote: Pacote) {
 		return
 	}
 
-	no := pacote.para
+	if p.ttl <= 1 {
+		log_pacote(p, "TTL ESGOTADO")
+		return
+	}
+	p.ttl -= 1
+
+	no := p.para
 	vizinhos := conexoes_entidade(no, context.temp_allocator)
 
 	destino_vizinho := false
 	for v in vizinhos {
-		if v == pacote.destino {
+		if v == p.destino {
 			destino_vizinho = true
 			break
 		}
 	}
 
 	if destino_vizinho {
-		log_pacote(pacote, "ROTA DIRETA")
-		copia := pacote_clone(pacote)
+		log_pacote(p, "ROTA DIRETA")
+		copia := pacote_clone(p)
 		append(&copia.historico, no)
-		pacote_enviar(&copia, no, pacote.destino)
+		pacote_enviar(&copia, no, p.destino)
 		return
 	}
 
-	log_pacote(pacote, "FLOOD")
+	log_pacote(p, "FLOOD")
 	for v in vizinhos {
-		if v == pacote.de {
+		if v == p.de {
 			continue
 		}
-		if entidade_no_historico(pacote.historico, v) {
+		if entidade_no_historico(p.historico, v) {
 			continue
 		}
-		copia := pacote_clone(pacote)
+		copia := pacote_clone(p)
 		append(&copia.historico, no)
 		pacote_enviar(&copia, no, v)
 	}
@@ -190,14 +223,18 @@ simulacao_atualizar_envios :: proc(dt: f32) {
 
 // simulacao_tem_pendencia informa se ainda há trabalho a escoar.
 //
-// Retorna: `true` se algum usuário tem mensagens em `saida`, fragmentos em
-// `entrada` ou um envio em andamento, `false` caso contrário.
+// Retorna: `true` se algum usuário tem mensagens em `saida` ou um envio em
+// andamento, `false` caso contrário. Fragmentos parciais de `entrada` são
+// ignorados para permitir que a simulação encerre mesmo com perdas.
 simulacao_tem_pendencia :: proc() -> bool {
 	it := hm.iterator_make(&entidades)
 	for entidade, _ in hm.iterate(&it) {
 		switch &dados in entidade.dados {
 		case Usuario:
-			if len(dados.saida) > 0 || len(dados.entrada) > 0 || dados.envio_ativo {
+			// Fragmentos parciais em `entrada` não contam como pendência: com
+			// perda de pacotes eles nunca completariam, e a simulação precisa
+			// poder parar.
+			if len(dados.saida) > 0 || dados.envio_ativo {
 				return true
 			}
 		case Comutador:
@@ -276,7 +313,8 @@ simulacao_limpar :: proc() {
 }
 
 // pacotes_renderizar desenha cada pacote interpolado entre `de` e `para`, com um
-// rastro na direção do movimento. Sem retorno.
+// rastro na direção do movimento (círculo para UDP; quadrado reservado ao TCP).
+// Sem retorno.
 pacotes_renderizar :: proc() {
 	for pacote in pacotes {
 		p_de, ok_de := posicao_entidade(pacote.de)
@@ -292,6 +330,17 @@ pacotes_renderizar :: proc() {
 		rastro := pos - direcao * (RAIO_PACOTE * 2.0)
 		cor_rastro := rl.Color{pacote.cor.r, pacote.cor.g, pacote.cor.b, 120}
 		rl.DrawLineEx(rastro, pos, RAIO_PACOTE, cor_rastro)
-		rl.DrawCircleV(pos, RAIO_PACOTE, pacote.cor)
+
+		switch pacote.protocolo {
+		case .UDP:
+			rl.DrawCircleV(pos, RAIO_PACOTE, pacote.cor)
+		case .TCP:
+			rl.DrawRectanglePro(
+				rl.Rectangle{pos.x, pos.y, RAIO_PACOTE * 2, RAIO_PACOTE * 2},
+				rl.Vector2{RAIO_PACOTE, RAIO_PACOTE},
+				45,
+				pacote.cor,
+			)
+		}
 	}
 }

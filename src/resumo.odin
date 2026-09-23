@@ -14,6 +14,7 @@ ResumoTipo :: enum {
 
 ResumoLinha :: struct {
 	tipo:        ResumoTipo,
+	protocolo:   Protocolo,
 	contraparte: EntidadeID,
 	conteudo:    string,
 }
@@ -110,10 +111,10 @@ gui_modal_resumo_render :: proc() {
 
 	linhas := make([dynamic]ResumoLinha, 0, 32, context.temp_allocator)
 	for m in dados.enviadas {
-		append(&linhas, ResumoLinha{.Enviada, m.destino, m.conteudo})
+		append(&linhas, ResumoLinha{.Enviada, m.protocolo, m.destino, m.conteudo})
 	}
 	for m in dados.recebidas {
-		append(&linhas, ResumoLinha{.Recebida, m.origem, m.conteudo})
+		append(&linhas, ResumoLinha{.Recebida, m.protocolo, m.origem, m.conteudo})
 	}
 
 	area := rl.Rectangle {
@@ -129,8 +130,9 @@ gui_modal_resumo_render :: proc() {
 	rl.DrawRectangleRec(area, rl.Color{30, 30, 40, 255})
 	rl.DrawRectangleLinesEx(area, 1, rl.GRAY)
 	rl.DrawText("Tipo", i32(area.x) + 8, i32(area.y) - 22, 16, rl.RAYWHITE)
-	rl.DrawText("Contraparte", i32(area.x) + 90, i32(area.y) - 22, 16, rl.RAYWHITE)
-	rl.DrawText("Conteúdo", i32(area.x) + 230, i32(area.y) - 22, 16, rl.RAYWHITE)
+	rl.DrawText("Protocolo", i32(area.x) + 90, i32(area.y) - 22, 16, rl.RAYWHITE)
+	rl.DrawText("Contraparte", i32(area.x) + 180, i32(area.y) - 22, 16, rl.RAYWHITE)
+	rl.DrawText("Conteúdo", i32(area.x) + 320, i32(area.y) - 22, 16, rl.RAYWHITE)
 
 	rl.BeginScissorMode(i32(area.x), i32(area.y), i32(area.width), i32(area.height))
 	y := area.y - resumo_scroll
@@ -141,17 +143,24 @@ gui_modal_resumo_render :: proc() {
 			} else {
 				rl.DrawText("Recebida", i32(area.x) + 8, i32(y) + 2, 16, rl.LIGHTGRAY)
 			}
+			rl.DrawText(
+				strings.clone_to_cstring(nome_protocolo(linha.protocolo)),
+				i32(area.x) + 90,
+				i32(y) + 2,
+				16,
+				rl.LIGHTGRAY,
+			)
 			nome := nome_entidade(linha.contraparte)
 			rl.DrawText(
 				strings.clone_to_cstring(nome),
-				i32(area.x) + 90,
+				i32(area.x) + 180,
 				i32(y) + 2,
 				16,
 				rl.LIGHTGRAY,
 			)
 			rl.DrawText(
 				strings.clone_to_cstring(linha.conteudo),
-				i32(area.x) + 230,
+				i32(area.x) + 320,
 				i32(y) + 2,
 				16,
 				rl.WHITE,

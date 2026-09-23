@@ -52,14 +52,13 @@ criar_conexao :: proc(a, b: EntidadeID) -> (conexao: ConexaoID, ok: bool) {
 		}
 	}
 
-	handle, err := hm.add(&conexoes, Conexao{a = a, b = b})
-	if err != false {
-		return {}, false
-	}
+	handle, _ := hm.add(&conexoes, Conexao{a = a, b = b})
 	if c, found := hm.get(&conexoes, handle); found {
 		c.handle = handle
+		return handle, true
 	}
-	return handle, true
+
+	return EntidadeID{}, false
 }
 
 // deletar_conexao remove uma conexão do handle map.

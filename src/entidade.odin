@@ -297,6 +297,17 @@ entidade_rotulo_renderizar :: proc(entidade: ^Entidade) {
 			tamanho,
 			rl.RAYWHITE,
 		)
+
+		ip_cstr := strings.clone_to_cstring(ip_para_string(dados.ip), context.temp_allocator)
+		ip_tamanho: i32 = 14
+		ip_largura := rl.MeasureText(ip_cstr, ip_tamanho)
+		rl.DrawText(
+			ip_cstr,
+			i32(entidade.posicao.x) - ip_largura / 2,
+			i32(entidade.posicao.y) + TAMANHO_COLISOR / 2 + 22,
+			ip_tamanho,
+			rl.GRAY,
+		)
 	case Comutador:
 	}
 }

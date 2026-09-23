@@ -12,10 +12,11 @@ proximo_usuario_id: u32
 DELAY_ENTRE_PACOTES :: 0.8
 
 Mensagem :: struct {
-	id:       u32,
-	origem:   EntidadeID,
-	destino:  EntidadeID,
-	conteudo: string,
+	id:        u32,
+	origem:    EntidadeID,
+	destino:   EntidadeID,
+	conteudo:  string,
+	protocolo: Protocolo,
 }
 
 EnvioPendente :: struct {
@@ -29,6 +30,7 @@ EnvioPendente :: struct {
 Usuario :: struct {
 	alocador:    runtime.Allocator,
 	nome:        string,
+	ip:          Ip,
 	saida:       [dynamic]Mensagem,
 	enviadas:    [dynamic]Mensagem,
 	entrada:     [dynamic]Pacote,
@@ -41,16 +43,22 @@ Usuario :: struct {
 //
 // Parâmetros:
 // - `nome`: nome personalizado; vazio usa o automático "Usuário N".
+// - `ip`: endereço IPv4; `Ip{}` escolhe o próximo livre da faixa automática.
 // - `alocador`: alocador usado para nome e listas dinâmicas.
 //
 // Retorna: o `Usuario` inicializado (incrementa `proximo_usuario_id`).
-usuario_new :: proc(nome := "", alocador := context.allocator) -> (usuario: Usuario) {
+usuario_new :: proc(nome := "", ip := IP_VAZIO, alocador := context.allocator) -> (usuario: Usuario) {
 	usuario.alocador = alocador
 	proximo_usuario_id += 1
 	if len(nome) > 0 {
 		usuario.nome = strings.clone(nome, alocador)
 	} else {
 		usuario.nome = fmt.aprintf("Usuário %v", proximo_usuario_id)
+	}
+
+	usuario.ip = ip
+	if ip == IP_VAZIO {
+		usuario.ip = ip_sugerido()
 	}
 	usuario.saida = make([dynamic]Mensagem, usuario.alocador)
 	usuario.enviadas = make([dynamic]Mensagem, usuario.alocador)
@@ -114,6 +122,10 @@ usuario_enviar_fragmento :: proc(usuario: ^Usuario, indice: int) -> (ok: bool) {
 	base := Pacote {
 		origem      = mensagem.origem,
 		destino     = mensagem.destino,
+		ip_origem   = ip_entidade(mensagem.origem),
+		ip_destino  = ip_entidade(mensagem.destino),
+		protocolo   = mensagem.protocolo,
+		ttl         = TTL_PADRAO,
 		mensagem_id = mensagem.id,
 		indice      = indice,
 		total       = usuario.envio.total,
@@ -227,14 +239,15 @@ usuario_receber :: proc(usuario: ^Usuario, pacote: Pacote) {
 	}
 
 	mensagem := Mensagem {
-		id       = pacote.mensagem_id,
-		origem   = pacote.origem,
-		destino  = pacote.destino,
-		conteudo = utf8.runes_to_string(todos[:], usuario.alocador),
+		id        = pacote.mensagem_id,
+		origem    = pacote.origem,
+		destino   = pacote.destino,
+		conteudo  = utf8.runes_to_string(todos[:], usuario.alocador),
+		protocolo = pacote.protocolo,
 	}
 	append(&usuario.recebidas, mensagem)
 
-	notificar_mensagem_recebida(usuario.nome, mensagem.conteudo)
+	notificar_mensagem_recebida(usuario.nome, mensagem.conteudo, mensagem.protocolo)
 
 	usuario_remover_fragmentos(usuario, pacote.mensagem_id)
 }
