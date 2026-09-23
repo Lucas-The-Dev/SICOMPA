@@ -69,6 +69,24 @@ log_pacote :: proc(pacote: Pacote, evento: string) {
 	}
 	fmt.sbprintf(&hist, "]")
 
+	if pacote.protocolo == .TCP {
+		fmt.printf(
+			"[msg %v][TCP] %s: %s(%s) -> %s(%s) | %s seq=%v ack=%v | ttl=%v | hist=%s\n",
+			pacote.mensagem_id,
+			evento,
+			nome_entidade(pacote.de),
+			ip_para_string(pacote.ip_origem),
+			nome_entidade(pacote.para),
+			ip_para_string(pacote.ip_destino),
+			tcp_rotulo(pacote),
+			pacote.seq,
+			pacote.ack,
+			pacote.ttl,
+			strings.to_string(hist),
+		)
+		return
+	}
+
 	fmt.printf(
 		"[msg %v][pkt %v/%v][%s] %s: %s(%s) -> %s(%s) | ttl=%v | hist=%s\n",
 		pacote.mensagem_id,
@@ -151,7 +169,12 @@ pacote_chegar :: proc(pacote_entrada: Pacote) {
 		if entidade, ok := hm.get(&entidades, p.para); ok {
 			switch &dados in entidade.dados {
 			case Usuario:
-				usuario_receber(&dados, p)
+				switch p.protocolo {
+				case .UDP:
+					usuario_receber(&dados, p)
+				case .TCP:
+					tcp_receber(&dados, p.para, p)
+				}
 			case Comutador:
 			}
 		}
@@ -173,6 +196,25 @@ pacote_chegar :: proc(pacote_entrada: Pacote) {
 	p.ttl -= 1
 
 	no := p.para
+
+	if p.usar_rota {
+		proximo_idx := p.rota_indice + 1
+		if proximo_idx >= len(p.rota) {
+			log_pacote(p, "ROTA FIM")
+			return
+		}
+		proximo := p.rota[proximo_idx]
+		if _, ok := hm.get(&entidades, proximo); !ok {
+			log_pacote(p, "ROTA INVÁLIDA")
+			return
+		}
+		log_pacote(p, "ROTA")
+		copia := pacote_clone(p)
+		copia.rota_indice = proximo_idx
+		pacote_enviar(&copia, no, proximo)
+		return
+	}
+
 	vizinhos := conexoes_entidade(no, context.temp_allocator)
 
 	destino_vizinho := false
@@ -212,10 +254,10 @@ pacote_chegar :: proc(pacote_entrada: Pacote) {
 // - `dt`: tempo decorrido desde o último frame. Sem retorno.
 simulacao_atualizar_envios :: proc(dt: f32) {
 	it := hm.iterator_make(&entidades)
-	for entidade, _ in hm.iterate(&it) {
+	for entidade, handle in hm.iterate(&it) {
 		switch &dados in entidade.dados {
 		case Usuario:
-			usuario_atualizar_envio(&dados, dt)
+			usuario_atualizar_envio(&dados, handle, dt)
 		case Comutador:
 		}
 	}
@@ -233,8 +275,8 @@ simulacao_tem_pendencia :: proc() -> bool {
 		case Usuario:
 			// Fragmentos parciais em `entrada` não contam como pendência: com
 			// perda de pacotes eles nunca completariam, e a simulação precisa
-			// poder parar.
-			if len(dados.saida) > 0 || dados.envio_ativo {
+			// poder parar. A conexão TCP ativa, porém, mantém a simulação viva.
+			if len(dados.saida) > 0 || dados.envio_ativo || dados.tcp_envio.ativo {
 				return true
 			}
 		case Comutador:
@@ -309,6 +351,7 @@ simulacao_limpar :: proc() {
 		pacote_free(&pacotes[i])
 	}
 	clear(&pacotes)
+	tcp_limpar_todos()
 	simulacao_ativa = false
 }
 
@@ -341,6 +384,9 @@ pacotes_renderizar :: proc() {
 				45,
 				pacote.cor,
 			)
+			rotulo := tcp_rotulo(pacote)
+			cstr := strings.clone_to_cstring(rotulo, context.temp_allocator)
+			rl.DrawText(cstr, i32(pos.x) + 8, i32(pos.y) - 20, 14, rl.WHITE)
 		}
 	}
 }

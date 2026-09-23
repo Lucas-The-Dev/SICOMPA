@@ -244,10 +244,6 @@ gui_modal_mensagem_render :: proc() {
 		"UDP;TCP",
 		&mensagem_protocolo_idx,
 	)
-	if mensagem_protocolo_idx != 0 {
-		mostrar_mensagem("TCP ainda não implementado.")
-		mensagem_protocolo_idx = 0
-	}
 	if mensagem_protocolo_idx == 0 {
 		mensagem_protocolo = .UDP
 	} else {
@@ -445,6 +441,8 @@ gui_modal_nome_usuario_render :: proc() {
 gui_renderizar :: proc() {
 	gui_topleft_buttons_render()
 
+	gui_parametros_tcp_render()
+
 	gui_bottom_bar_render()
 
 	gui_mensagem_render()
@@ -535,4 +533,38 @@ gui_bottom_bar_render :: proc() {
 		100,
 	)
 	probabilidade_perda = perda_pct / 100
+}
+
+// gui_parametros_tcp_render desenha a faixa com os sliders de RTO e Tentativas
+// acima da barra inferior. Sem retorno.
+gui_parametros_tcp_render :: proc() {
+	rect := rl.Rectangle {
+		x      = f32(rl.GetScreenWidth()) / 2 - 350,
+		y      = f32(rl.GetScreenHeight()) - 120,
+		width  = 700,
+		height = 44,
+	}
+	rl.GuiPanel(rect, "")
+
+	rto := tcp_rto
+	rl.GuiSlider(
+		{rect.x + 20, rect.y + 14, 300, 16},
+		"RTO (s)",
+		"",
+		&rto,
+		0.2,
+		5.0,
+	)
+	tcp_rto = rto
+
+	tentativas := f32(tcp_max_tentativas)
+	rl.GuiSlider(
+		{rect.x + 380, rect.y + 14, 300, 16},
+		"Tentativas",
+		"",
+		&tentativas,
+		1,
+		10,
+	)
+	tcp_max_tentativas = int(tentativas)
 }

@@ -28,15 +28,17 @@ EnvioPendente :: struct {
 }
 
 Usuario :: struct {
-	alocador:    runtime.Allocator,
-	nome:        string,
-	ip:          Ip,
-	saida:       [dynamic]Mensagem,
-	enviadas:    [dynamic]Mensagem,
-	entrada:     [dynamic]Pacote,
-	recebidas:   [dynamic]Mensagem,
-	envio:       EnvioPendente,
-	envio_ativo: bool,
+	alocador:      runtime.Allocator,
+	nome:          string,
+	ip:            Ip,
+	saida:         [dynamic]Mensagem,
+	enviadas:      [dynamic]Mensagem,
+	entrada:       [dynamic]Pacote,
+	recebidas:     [dynamic]Mensagem,
+	envio:         EnvioPendente,
+	envio_ativo:   bool,
+	tcp_envio:     TcpEnvio,
+	tcp_recebidas: [dynamic]RecebimentoTCP,
 }
 
 // usuario_new cria um usuário com nome automático ("Usuário N") e listas vazias.
@@ -64,6 +66,7 @@ usuario_new :: proc(nome := "", ip := IP_VAZIO, alocador := context.allocator) -
 	usuario.enviadas = make([dynamic]Mensagem, usuario.alocador)
 	usuario.entrada = make([dynamic]Pacote, usuario.alocador)
 	usuario.recebidas = make([dynamic]Mensagem, usuario.alocador)
+	usuario.tcp_recebidas = make([dynamic]RecebimentoTCP, usuario.alocador)
 	return usuario
 }
 
@@ -99,6 +102,9 @@ usuario_free :: proc(usuario: ^Usuario) {
 		delete(usuario.envio.runes)
 		delete(usuario.envio.mensagem.conteudo)
 	}
+
+	tcp_limpar(usuario)
+	delete(usuario.tcp_recebidas)
 }
 
 // usuario_enviar_fragmento envia UM fragmento (de índice `indice`) da mensagem
@@ -140,19 +146,30 @@ usuario_enviar_fragmento :: proc(usuario: ^Usuario, indice: int) -> (ok: bool) {
 	return true
 }
 
-// usuario_atualizar_envio inicia a próxima mensagem de `saida` e libera um
-// fragmento a cada `DELAY_ENTRE_PACOTES` (o primeiro sai imediatamente).
+// usuario_atualizar_envio avança o envio ativo (UDP fragmentado ou conexão TCP)
+// e inicia a próxima mensagem de `saida`.
 //
 // Parâmetros:
 // - `usuario`: usuário dono da fila de envio.
+// - `id`: handle do usuário.
 // - `dt`: tempo decorrido desde o último frame. Sem retorno.
-usuario_atualizar_envio :: proc(usuario: ^Usuario, dt: f32) {
+usuario_atualizar_envio :: proc(usuario: ^Usuario, id: EntidadeID, dt: f32) {
+	if usuario.tcp_envio.ativo {
+		tcp_atualizar(usuario, id, dt)
+		return
+	}
+
 	if !usuario.envio_ativo {
 		if len(usuario.saida) == 0 {
 			return
 		}
 		mensagem := usuario.saida[0]
 		ordered_remove(&usuario.saida, 0)
+
+		if mensagem.protocolo == .TCP {
+			tcp_iniciar(usuario, id, mensagem)
+			return
+		}
 
 		runes := utf8.string_to_runes(mensagem.conteudo, usuario.alocador)
 		total := (len(runes) + RUNES_POR_PACOTE - 1) / RUNES_POR_PACOTE
