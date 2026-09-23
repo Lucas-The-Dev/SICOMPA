@@ -1,11 +1,14 @@
 package main
 
 import hm "core:container/handle_map"
+import "core:fmt"
+import "core:strings"
 import rl "vendor:raylib"
 
 pacotes: [dynamic]Pacote
 simulacao_ativa: bool
 proximo_mensagem_id: u32
+logs_ativos: bool = true
 
 VELOCIDADE_PACOTE :: 260.0
 RAIO_PACOTE :: 7.0
@@ -28,6 +31,39 @@ CORES_MENSAGEM := [6]rl.Color {
 // Retorna: a cor correspondente na paleta `CORES_MENSAGEM`.
 cor_para_mensagem :: proc(id: u32) -> rl.Color {
 	return CORES_MENSAGEM[id % u32(len(CORES_MENSAGEM))]
+}
+
+// log_pacote imprime no terminal um evento do pacote (salto, entrega, descarte),
+// com origem/destino legíveis e o histórico de comutadores visitados.
+//
+// Parâmetros:
+// - `pacote`: pacote envolvido no evento.
+// - `evento`: rótulo curto do que aconteceu. Sem retorno.
+log_pacote :: proc(pacote: Pacote, evento: string) {
+	if !logs_ativos {
+		return
+	}
+
+	hist := strings.builder_make_len_cap(0, 64, context.temp_allocator)
+	fmt.sbprintf(&hist, "[")
+	for h, i in pacote.historico {
+		if i > 0 {
+			fmt.sbprintf(&hist, ", ")
+		}
+		fmt.sbprintf(&hist, "%s", nome_entidade(h))
+	}
+	fmt.sbprintf(&hist, "]")
+
+	fmt.printf(
+		"[msg %v][pkt %v/%v] %s: %s -> %s | hist=%s\n",
+		pacote.mensagem_id,
+		pacote.indice,
+		pacote.total,
+		evento,
+		nome_entidade(pacote.de),
+		nome_entidade(pacote.para),
+		strings.to_string(hist),
+	)
 }
 
 // posicao_entidade consulta o centro de uma entidade.
@@ -54,6 +90,7 @@ pacote_enviar :: proc(pacote: ^Pacote, de, para: EntidadeID) {
 	pacote.de = de
 	pacote.para = para
 	pacote.progresso = 0
+	log_pacote(pacote^, "SALTO")
 	append(&pacotes, pacote^)
 }
 
@@ -83,6 +120,7 @@ entidade_no_historico :: proc(historico: [dynamic]EntidadeID, id: EntidadeID) ->
 // - `pacote`: pacote que chegou ao nó. Sem retorno.
 pacote_chegar :: proc(pacote: Pacote) {
 	if pacote.destino == pacote.para {
+		log_pacote(pacote, "ENTREGA")
 		if entidade, ok := hm.get(&entidades, pacote.para); ok {
 			switch &dados in entidade.dados {
 			case Usuario:
@@ -113,12 +151,14 @@ pacote_chegar :: proc(pacote: Pacote) {
 	}
 
 	if destino_vizinho {
+		log_pacote(pacote, "ROTA DIRETA")
 		copia := pacote_clone(pacote)
 		append(&copia.historico, no)
 		pacote_enviar(&copia, no, pacote.destino)
 		return
 	}
 
+	log_pacote(pacote, "FLOOD")
 	for v in vizinhos {
 		if v == pacote.de {
 			continue
@@ -132,22 +172,17 @@ pacote_chegar :: proc(pacote: Pacote) {
 	}
 }
 
-// simulacao_escoar_saidas percorre os usuários e envia todas as mensagens
-// pendentes em `saida`, descartando-as em seguida. Avisa quando a origem não
-// tem conexões. Sem retorno.
-simulacao_escoar_saidas :: proc() {
+// simulacao_atualizar_envios percorre os usuários avançando os envios, que
+// liberam um fragmento a cada `DELAY_ENTRE_PACOTES`.
+//
+// Parâmetros:
+// - `dt`: tempo decorrido desde o último frame. Sem retorno.
+simulacao_atualizar_envios :: proc(dt: f32) {
 	it := hm.iterator_make(&entidades)
 	for entidade, _ in hm.iterate(&it) {
 		switch &dados in entidade.dados {
 		case Usuario:
-			for i := len(dados.saida) - 1; i >= 0; i -= 1 {
-				mensagem := dados.saida[i]
-				if !usuario_enviar(&dados, mensagem) {
-					mostrar_mensagem("Usuário de origem sem conexões; mensagem descartada.")
-				}
-				delete(mensagem.conteudo)
-				unordered_remove(&dados.saida, i)
-			}
+			usuario_atualizar_envio(&dados, dt)
 		case Comutador:
 		}
 	}
@@ -155,14 +190,14 @@ simulacao_escoar_saidas :: proc() {
 
 // simulacao_tem_pendencia informa se ainda há trabalho a escoar.
 //
-// Retorna: `true` se algum usuário tem mensagens em `saida` ou fragmentos em
-// `entrada`, `false` caso contrário.
+// Retorna: `true` se algum usuário tem mensagens em `saida`, fragmentos em
+// `entrada` ou um envio em andamento, `false` caso contrário.
 simulacao_tem_pendencia :: proc() -> bool {
 	it := hm.iterator_make(&entidades)
 	for entidade, _ in hm.iterate(&it) {
 		switch &dados in entidade.dados {
 		case Usuario:
-			if len(dados.saida) > 0 || len(dados.entrada) > 0 {
+			if len(dados.saida) > 0 || len(dados.entrada) > 0 || dados.envio_ativo {
 				return true
 			}
 		case Comutador:
@@ -180,19 +215,20 @@ simulacao_iniciar :: proc() {
 		return
 	}
 	simulacao_ativa = true
-	simulacao_escoar_saidas()
+	simulacao_atualizar_envios(0)
 }
 
-// simulacao_atualizar avança a simulação por frame: escoa saídas, move cada
+// simulacao_atualizar avança a simulação por frame: escoa envios, move cada
 // pacote por `VELOCIDADE_PACOTE` (entregando ao chegar) e para sozinha quando
 // não há mais pacotes nem pendências. Sem retorno.
 simulacao_atualizar :: proc() {
 	if !simulacao_ativa {
 		return
 	}
-	simulacao_escoar_saidas()
 
 	dt := rl.GetFrameTime()
+	simulacao_atualizar_envios(dt)
+
 	for i := len(pacotes) - 1; i >= 0; i -= 1 {
 		pacote := pacotes[i]
 

@@ -2,12 +2,18 @@ package main
 
 ComutadorID :: EntidadeID
 
-Comutador :: struct {}
+proximo_comutador_id: u32
 
-// comutador_new cria um comutador. Atualmente não possui estado próprio.
+Comutador :: struct {
+	id: u32,
+}
+
+// comutador_new cria um comutador com um id sequencial (para logs/tabela).
 //
-// Retorna: o `Comutador` (vazio).
+// Retorna: o `Comutador` (incrementa `proximo_comutador_id`).
 comutador_new :: proc() -> (comutador: Comutador) {
+	proximo_comutador_id += 1
+	comutador.id = proximo_comutador_id
 	return comutador
 }
 

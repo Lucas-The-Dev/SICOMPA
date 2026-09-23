@@ -182,6 +182,7 @@ importar_esquema :: proc(nome: string) -> bool {
 
 	entidades_limpar()
 	proximo_usuario_id = 0
+	proximo_comutador_id = 0
 	proximo_mensagem_id = 0
 
 	criadas := make([]EntidadeID, len(esquema.entidades), context.temp_allocator)

@@ -2,11 +2,14 @@ package main
 
 import "base:runtime"
 import "core:fmt"
+import "core:strings"
 import "core:unicode/utf8"
 
 UsuarioID :: EntidadeID
 
 proximo_usuario_id: u32
+
+DELAY_ENTRE_PACOTES :: 0.8
 
 Mensagem :: struct {
 	id:       u32,
@@ -15,25 +18,42 @@ Mensagem :: struct {
 	conteudo: string,
 }
 
+EnvioPendente :: struct {
+	mensagem: Mensagem,
+	runes:    []rune,
+	total:    int,
+	indice:   int,
+	timer:    f32,
+}
+
 Usuario :: struct {
-	alocador:  runtime.Allocator,
-	nome:      string,
-	saida:     [dynamic]Mensagem,
-	entrada:   [dynamic]Pacote,
-	recebidas: [dynamic]Mensagem,
+	alocador:    runtime.Allocator,
+	nome:        string,
+	saida:       [dynamic]Mensagem,
+	enviadas:    [dynamic]Mensagem,
+	entrada:     [dynamic]Pacote,
+	recebidas:   [dynamic]Mensagem,
+	envio:       EnvioPendente,
+	envio_ativo: bool,
 }
 
 // usuario_new cria um usuário com nome automático ("Usuário N") e listas vazias.
 //
 // Parâmetros:
+// - `nome`: nome personalizado; vazio usa o automático "Usuário N".
 // - `alocador`: alocador usado para nome e listas dinâmicas.
 //
 // Retorna: o `Usuario` inicializado (incrementa `proximo_usuario_id`).
-usuario_new :: proc(alocador := context.allocator) -> (usuario: Usuario) {
+usuario_new :: proc(nome := "", alocador := context.allocator) -> (usuario: Usuario) {
 	usuario.alocador = alocador
 	proximo_usuario_id += 1
-	usuario.nome = fmt.aprintf("Usuário %v", proximo_usuario_id)
+	if len(nome) > 0 {
+		usuario.nome = strings.clone(nome, alocador)
+	} else {
+		usuario.nome = fmt.aprintf("Usuário %v", proximo_usuario_id)
+	}
 	usuario.saida = make([dynamic]Mensagem, usuario.alocador)
+	usuario.enviadas = make([dynamic]Mensagem, usuario.alocador)
 	usuario.entrada = make([dynamic]Pacote, usuario.alocador)
 	usuario.recebidas = make([dynamic]Mensagem, usuario.alocador)
 	return usuario
@@ -52,6 +72,11 @@ usuario_free :: proc(usuario: ^Usuario) {
 	}
 	delete(usuario.saida)
 
+	for mensagem in usuario.enviadas {
+		delete(mensagem.conteudo)
+	}
+	delete(usuario.enviadas)
+
 	for i in 0 ..< len(usuario.entrada) {
 		pacote_free(&usuario.entrada[i])
 	}
@@ -61,53 +86,101 @@ usuario_free :: proc(usuario: ^Usuario) {
 		delete(mensagem.conteudo)
 	}
 	delete(usuario.recebidas)
+
+	if usuario.envio_ativo {
+		delete(usuario.envio.runes)
+		delete(usuario.envio.mensagem.conteudo)
+	}
 }
 
-// usuario_enviar fragmenta o conteúdo da mensagem em blocos de
-// `RUNES_POR_PACOTE` e envia um clone a cada vizinho de `mensagem.origem`.
+// usuario_enviar_fragmento envia UM fragmento (de índice `indice`) da mensagem
+// ativa a todos os vizinhos da origem.
 //
 // Parâmetros:
 // - `usuario`: usuário de origem (define o alocador dos clones).
-// - `mensagem`: mensagem a enviar.
+// - `indice`: índice do fragmento a enviar.
 //
 // Retorna: `false` se a origem não tem vizinhos; `true` caso os pacotes sejam lançados.
-usuario_enviar :: proc(usuario: ^Usuario, mensagem: Mensagem) -> (ok: bool) {
+usuario_enviar_fragmento :: proc(usuario: ^Usuario, indice: int) -> (ok: bool) {
+	mensagem := usuario.envio.mensagem
 	vizinhos := conexoes_entidade(mensagem.origem, context.temp_allocator)
 	if len(vizinhos) == 0 {
 		return false
 	}
 
-	runes := utf8.string_to_runes(mensagem.conteudo, context.temp_allocator)
-	total := (len(runes) + RUNES_POR_PACOTE - 1) / RUNES_POR_PACOTE
-	if total == 0 {
-		total = 1
+	inicio := indice * RUNES_POR_PACOTE
+	fim := min(inicio + RUNES_POR_PACOTE, len(usuario.envio.runes))
+
+	base := Pacote {
+		origem      = mensagem.origem,
+		destino     = mensagem.destino,
+		mensagem_id = mensagem.id,
+		indice      = indice,
+		total       = usuario.envio.total,
+		bytes       = usuario.envio.runes[inicio:fim],
+		cor         = cor_para_mensagem(mensagem.id),
 	}
 
-	cor := cor_para_mensagem(mensagem.id)
-
-	for indice in 0 ..< total {
-		inicio := indice * RUNES_POR_PACOTE
-		fim := inicio + RUNES_POR_PACOTE
-		if fim > len(runes) {
-			fim = len(runes)
-		}
-
-		base := Pacote {
-			origem      = mensagem.origem,
-			destino     = mensagem.destino,
-			mensagem_id = mensagem.id,
-			indice      = indice,
-			total       = total,
-			bytes       = runes[inicio:fim],
-			cor         = cor,
-		}
-
-		for vizinho in vizinhos {
-			pacote := pacote_clone(base, usuario.alocador)
-			pacote_enviar(&pacote, mensagem.origem, vizinho)
-		}
+	for vizinho in vizinhos {
+		pacote := pacote_clone(base, usuario.alocador)
+		pacote_enviar(&pacote, mensagem.origem, vizinho)
 	}
 	return true
+}
+
+// usuario_atualizar_envio inicia a próxima mensagem de `saida` e libera um
+// fragmento a cada `DELAY_ENTRE_PACOTES` (o primeiro sai imediatamente).
+//
+// Parâmetros:
+// - `usuario`: usuário dono da fila de envio.
+// - `dt`: tempo decorrido desde o último frame. Sem retorno.
+usuario_atualizar_envio :: proc(usuario: ^Usuario, dt: f32) {
+	if !usuario.envio_ativo {
+		if len(usuario.saida) == 0 {
+			return
+		}
+		mensagem := usuario.saida[0]
+		ordered_remove(&usuario.saida, 0)
+
+		runes := utf8.string_to_runes(mensagem.conteudo, usuario.alocador)
+		total := (len(runes) + RUNES_POR_PACOTE - 1) / RUNES_POR_PACOTE
+		if total == 0 {
+			total = 1
+		}
+
+		usuario.envio = EnvioPendente {
+			mensagem = mensagem,
+			runes    = runes,
+			total    = total,
+		}
+		usuario.envio_ativo = true
+	}
+
+	if len(conexoes_entidade(usuario.envio.mensagem.origem, context.temp_allocator)) == 0 {
+		mostrar_mensagem("Usuário de origem sem conexões; mensagem descartada.")
+		delete(usuario.envio.runes)
+		delete(usuario.envio.mensagem.conteudo)
+		usuario.envio = {}
+		usuario.envio_ativo = false
+		return
+	}
+
+	usuario.envio.timer -= dt
+	if usuario.envio.timer > 0 {
+		return
+	}
+
+	usuario_enviar_fragmento(usuario, usuario.envio.indice)
+	usuario.envio.indice += 1
+
+	if usuario.envio.indice >= usuario.envio.total {
+		delete(usuario.envio.runes)
+		delete(usuario.envio.mensagem.conteudo)
+		usuario.envio = {}
+		usuario.envio_ativo = false
+		return
+	}
+	usuario.envio.timer = DELAY_ENTRE_PACOTES
 }
 
 // usuario_receber acumula fragmentos de uma mensagem com dedupe por

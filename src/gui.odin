@@ -86,11 +86,32 @@ ArquivoModo :: enum {
 arquivo_modo: ArquivoModo
 arquivo_nome: [256]u8
 
+modal_nome_usuario_aberto: bool
+nome_usuario_buffer:      [256]u8
+
+// definir_buffer copia `texto` para o buffer fixo (null-terminado), cortando se exceder.
+//
+// Parâmetros:
+// - `dest`: buffer de destino.
+// - `texto`: texto a copiar. Sem retorno.
+definir_buffer :: proc(dest: []u8, texto: string) {
+	n := len(texto)
+	if n > len(dest) - 1 {
+		n = len(dest) - 1
+	}
+	for i in 0 ..< n {
+		dest[i] = texto[i]
+	}
+	dest[n] = 0
+}
+
 // algum_modal_aberto informa se há algum modal aberto na GUI.
 //
-// Retorna: `true` se o modal de mensagem ou o de arquivo estiver aberto.
+// Retorna: `true` se qualquer modal (mensagem, arquivo, nome de usuário ou
+// resumo) estiver aberto.
 algum_modal_aberto :: proc() -> bool {
-	return modal_mensagem_aberto || modal_arquivo_aberto
+	return modal_mensagem_aberto || modal_arquivo_aberto ||
+		modal_nome_usuario_aberto || modal_resumo_aberto
 }
 
 // construir_lista_usuarios coleta os usuários existentes para os dropdowns.
@@ -165,6 +186,15 @@ gui_modal_adicionar :: proc(ids: []EntidadeID) {
 		}
 		proximo_mensagem_id += 1
 		append(&dados.saida, mensagem)
+
+		historico := Mensagem {
+			id       = mensagem.id,
+			origem   = origem,
+			destino  = destino,
+			conteudo = strings.clone(texto, dados.alocador),
+		}
+		append(&dados.enviadas, historico)
+
 		mostrar_mensagem("Mensagem adicionada à simulação.")
 	case Comutador:
 	}
@@ -316,6 +346,57 @@ gui_modal_arquivo_render :: proc() {
 	}
 }
 
+// abrir_modal_nome_usuario abre o modal de criação de usuário com a sugestão
+// "Usuário N" (N = próximo id) pré-preenchida. Sem retorno.
+abrir_modal_nome_usuario :: proc() {
+	sugestao := fmt.aprintf("Usuário %v", proximo_usuario_id + 1)
+	defer delete(sugestao)
+	definir_buffer(nome_usuario_buffer[:], sugestao)
+	modal_nome_usuario_aberto = true
+}
+
+// gui_modal_nome_usuario_render desenha o modal de nome do usuário e cria a
+// entidade ao confirmar (nome vazio usa a sugestão). Sem retorno.
+gui_modal_nome_usuario_render :: proc() {
+	if !modal_nome_usuario_aberto {
+		return
+	}
+
+	bounds := rl.Rectangle {
+		x      = f32(rl.GetRenderWidth()) / 2 - 200,
+		y      = f32(rl.GetRenderHeight()) / 2 - 80,
+		width  = 400,
+		height = 160,
+	}
+	rl.GuiWindowBox(bounds, "Criar Usuário")
+
+	rl.GuiLabel({bounds.x + 20, bounds.y + 50, 90, 24}, "Nome")
+	rl.GuiTextBox(
+		{bounds.x + 110, bounds.y + 50, 260, 24},
+		cstring(&nome_usuario_buffer[0]),
+		len(nome_usuario_buffer),
+		true,
+	)
+
+	if rl.GuiButton(
+		{bounds.x + bounds.width - 230, bounds.y + bounds.height - 40, 100, 30},
+		"Criar",
+	) {
+		nome := string(cstring(&nome_usuario_buffer[0]))
+		center := rl.Vector2{f32(rl.GetRenderWidth()) / 2, f32(rl.GetRenderHeight()) / 2}
+		if _, ok := entidade_new(usuario_new(nome), center, sprites[.Usuario]); !ok {
+			mostrar_mensagem("Falha ao criar usuário.")
+		}
+		modal_nome_usuario_aberto = false
+	}
+	if rl.GuiButton(
+		{bounds.x + bounds.width - 120, bounds.y + bounds.height - 40, 100, 30},
+		"Cancelar",
+	) {
+		modal_nome_usuario_aberto = false
+	}
+}
+
 // gui_renderizar orquestra toda a GUI na ordem de desenho:
 // botões, barra inferior, popup, modais e notificações. Sem retorno.
 gui_renderizar :: proc() {
@@ -329,6 +410,10 @@ gui_renderizar :: proc() {
 
 	gui_modal_arquivo_render()
 
+	gui_modal_nome_usuario_render()
+
+	gui_modal_resumo_render()
+
 	notificacoes_renderizar()
 }
 
@@ -338,9 +423,7 @@ gui_renderizar :: proc() {
 gui_topleft_buttons_render :: proc() {
 	center := rl.Vector2{f32(rl.GetRenderWidth()) / 2, f32(rl.GetRenderHeight()) / 2}
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 0), 150, 30}, "Criar Usuário") && !algum_modal_aberto() {
-		if _, ok := entidade_new(usuario_new(), center, sprites[.Usuario]); !ok {
-			mostrar_mensagem("Falha ao criar usuário.")
-		}
+		abrir_modal_nome_usuario()
 	}
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 1), 150, 30}, "Criar Comutador") && !algum_modal_aberto() {
 		if _, ok := entidade_new(comutador_new(), center, sprites[.Comutador]); !ok {
@@ -358,6 +441,10 @@ gui_topleft_buttons_render :: proc() {
 	}
 	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 4), 150, 30}, "Importar") && !algum_modal_aberto() {
 		abrir_modal_arquivo(.Importar)
+	}
+	rotulo_logs := logs_ativos ? "Logs: ON" : "Logs: OFF"
+	if rl.GuiButton({20, flexbox_axis(20, 30, 10, 5), 150, 30}, strings.clone_to_cstring(rotulo_logs)) && !algum_modal_aberto() {
+		logs_ativos = !logs_ativos
 	}
 }
 

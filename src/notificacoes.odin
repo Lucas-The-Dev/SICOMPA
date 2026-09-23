@@ -31,7 +31,7 @@ notificar :: proc(texto: string) {
 // - `nome`: nome do usuário destinatário.
 // - `conteudo`: texto remontado da mensagem. Sem retorno.
 notificar_mensagem_recebida :: proc(nome: string, conteudo: string) {
-	texto := fmt.aprintf("Usuário %s recebeu a mensagem: %s", nome, conteudo)
+	texto := fmt.aprintf("%s recebeu a mensagem: %s", nome, conteudo)
 	defer delete(texto)
 	notificar(texto)
 }

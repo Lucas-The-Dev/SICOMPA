@@ -9,11 +9,13 @@ import rl "vendor:raylib"
 sprites := [EntitySprite]rl.Texture2D {
 	.Usuario   = rl.Texture2D{},
 	.Comutador = rl.Texture2D{},
+	.Resumo    = rl.Texture2D{},
 }
 
 EntitySprite :: enum {
 	Usuario,
 	Comutador,
+	Resumo,
 }
 
 // main inicializa alocadores, handle maps, texturas e roda o loop principal
@@ -64,6 +66,7 @@ main :: proc() {
 
 	sprites[.Usuario] = rl.LoadTexture("sprites/icon_map.png")
 	sprites[.Comutador] = rl.LoadTexture("sprites/icon_tower.png")
+	sprites[.Resumo] = rl.LoadTexture("sprites/resumo.png")
 	defer {
 		for sprite in sprites {
 			rl.UnloadTexture(sprite)

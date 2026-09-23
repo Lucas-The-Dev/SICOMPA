@@ -1,6 +1,7 @@
 package main
 
 import hm "core:container/handle_map"
+import "core:fmt"
 import "core:strings"
 import rl "vendor:raylib"
 
@@ -180,11 +181,16 @@ entidades_selecionar :: proc(id: EntidadeID) {
 }
 
 // entidades_atualizar percorre as entidades aplicando arraste/update e, ao fim,
-// trata o clique direito (`entidades_processar_click_direito`). Sem retorno.
+// trata o clique direito (`entidades_processar_click_direito`). Um clique no
+// ícone de resumo é tratado antes do arraste (suprime a captura). Sem retorno.
 entidades_atualizar :: proc() {
-	it := hm.iterator_make(&entidades)
 	holding_another := false
 
+	if rl.IsMouseButtonPressed(.LEFT) && resumo_processar_clique() {
+		holding_another = true
+	}
+
+	it := hm.iterator_make(&entidades)
 	for entidade, _ in hm.iterate(&it) {
 		if !holding_another {
 			entidade_arrastar(entidade, &holding_another)
@@ -237,6 +243,10 @@ entidades_renderizar :: proc() {
 
 		entidade_rotulo_renderizar(entidade)
 
+		if _, is_usuario := entidade.dados.(Usuario); is_usuario {
+			resumo_icone_renderizar(entidade)
+		}
+
 		if entidades_selecionadas.quantidade == 1 &&
 		   entidades_selecionadas.selecionadas[0] == handle {
 			rl.DrawCircleLines(
@@ -247,6 +257,27 @@ entidades_renderizar :: proc() {
 			)
 		}
 	}
+}
+
+// nome_entidade devolve um rótulo legível para logs/tabela (Usuário → nome;
+// Comutador → "Comutador N").
+//
+// Parâmetros:
+// - `id`: handle da entidade.
+//
+// Retorna: string (alocador temporário) com o rótulo; "?" se não existir.
+nome_entidade :: proc(id: EntidadeID) -> string {
+	entidade, ok := hm.get(&entidades, id)
+	if !ok {
+		return "?"
+	}
+	switch &dados in entidade.dados {
+	case Usuario:
+		return dados.nome
+	case Comutador:
+		return fmt.aprintf("Comutador %v", dados.id, allocator = context.temp_allocator)
+	}
+	return "?"
 }
 
 // entidade_rotulo_renderizar desenha o nome abaixo do sprite (apenas Usuário).
