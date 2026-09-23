@@ -44,6 +44,13 @@ main :: proc() {
 		}
 	}
 
+	defer {
+		simulacao_limpar()
+		delete(pacotes)
+		notificacoes_limpar()
+		delete(notificacoes)
+	}
+
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .WINDOW_HIGHDPI})
 	rl.InitWindow(1280, 720, "SICOMPA - Simulador de Comutação de Pacotes")
 	defer rl.CloseWindow()
@@ -61,11 +68,11 @@ main :: proc() {
 		}
 	}
 
-	rl.EnableEventWaiting()
-
 	rl.SetTargetFPS(180)
 	for !rl.WindowShouldClose() {
 		entidades_atualizar()
+		simulacao_atualizar()
+		notificacoes_atualizar()
 
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.DARKGRAY)
@@ -73,6 +80,8 @@ main :: proc() {
 		conexoes_renderizar()
 
 		entidades_renderizar()
+
+		pacotes_renderizar()
 
 		gui_renderizar()
 

@@ -1,6 +1,7 @@
 package main
 
 import hm "core:container/handle_map"
+import "core:strings"
 import rl "vendor:raylib"
 
 when ODIN_DEBUG {
@@ -165,6 +166,8 @@ entidades_renderizar :: proc() {
 		}
 		rl.DrawTextureEx(entidade.sprite, entidade.posicao - tamanho / 2, 0.0, ESCALA_ENTIDADE, rl.WHITE)
 
+		entidade_rotulo_renderizar(entidade)
+
 		if entidades_selecionadas.quantidade == 1 &&
 		   entidades_selecionadas.selecionadas[0] == handle {
 			rl.DrawCircleLines(
@@ -174,5 +177,22 @@ entidades_renderizar :: proc() {
 				rl.YELLOW,
 			)
 		}
+	}
+}
+
+entidade_rotulo_renderizar :: proc(entidade: ^Entidade) {
+	switch &dados in entidade.dados {
+	case Usuario:
+		cstr := strings.clone_to_cstring(dados.nome, context.temp_allocator)
+		tamanho: i32 = 16
+		largura := rl.MeasureText(cstr, tamanho)
+		rl.DrawText(
+			cstr,
+			i32(entidade.posicao.x) - largura / 2,
+			i32(entidade.posicao.y) + TAMANHO_COLISOR / 2 + 4,
+			tamanho,
+			rl.RAYWHITE,
+		)
+	case Comutador:
 	}
 }
