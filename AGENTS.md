@@ -45,5 +45,4 @@ Camada de endereçamento: cada **Usuário** possui um IPv4 (`Usuario.ip: Ip`, fa
 
 # Regras gerais
 1. Não tente ler arquivos fora do projeto, sob nenhuma hipótese, principalmente os arquivos da biblioteca padrão do Odin ou do Raylib (eles têm documentação na internet para isto).
-2. Você está em um ambiente separado do compilador, então não tente chamá-lo ou executá-lo; quem tem essa responsabilidade é o usuário.
-3. Evite ler arquivos de forma desnecessária, principalmente os arquivos binários em `sprites/` e `styles/`.
+2. Evite ler arquivos de forma desnecessária, principalmente os arquivos binários em `sprites/` e `styles/`.
